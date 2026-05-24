@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/OpenVTC/rp-sdk.git"
+    "url": "https://github.com/OpenVTC/rp-sdk-js.git"
   },
   "type": "module",
   "main": "./dist/index.js",
@@ -20,7 +20,12 @@
       "import": "./dist/express.js"
     }
   },
-  "files": ["dist", "src", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "build:check": "tsc -p tsconfig.json --noEmit",
