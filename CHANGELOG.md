@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.1.1 — 2026-05-28
+
+### Fixed
+
+- **`package.json` repository URL** now points at
+  `https://github.com/OpenVTC/rp-sdk-js.git` instead of the
+  non-existent `OpenVTC/rp-sdk`. The "Repository" link on the
+  [npmjs.com landing page](https://www.npmjs.com/package/@openvtc/rp-sdk)
+  now resolves; the 0.1.0 link 404'd.
+
+### Added (to tarball)
+
+- `CHANGELOG.md` — present in the source tree since shortly after
+  the 0.1.0 publish but never shipped to the registry. 0.1.0's
+  release notes are captured below.
+
+### Unchanged
+
+Runtime code (`src/`, generated `dist/`) is byte-identical to the
+0.1.0 release. This is a metadata-only patch — consumers of the
+verification API see no behaviour change.
+
 ## 0.1.0 — 2026-05-24
 
 ### Added
