@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ed25519 } from "@noble/curves/ed25519";
+import { ed25519 } from "@noble/curves/ed25519.js";
 import { base58 } from "@scure/base";
 
 import {
@@ -159,6 +159,27 @@ describe("verifyIdToken", () => {
     await expect(
       verifyIdToken({ idToken: tok, audience: RP, nonce: NONCE, resolver }),
     ).rejects.toMatchObject({ reason: "expired" });
+  });
+
+  it("rejects iat after exp", async () => {
+    // exp in the future (not expired) but iat later still, and within
+    // the skew window so the future-iat check doesn't fire first.
+    const tok = makeToken(secret, { iat: now + 10, exp: now + 5 }, defaults);
+    await expect(
+      verifyIdToken({ idToken: tok, audience: RP, nonce: NONCE, resolver }),
+    ).rejects.toMatchObject({ reason: "iat_after_exp" });
+  });
+
+  it("surfaces resolver failures as resolver_failed", async () => {
+    // iss === sub but a method the bundled KeyResolver can't resolve.
+    const tok = makeToken(
+      secret,
+      { iss: "did:web:foo.example", sub: "did:web:foo.example" },
+      defaults,
+    );
+    await expect(
+      verifyIdToken({ idToken: tok, audience: RP, nonce: NONCE, resolver }),
+    ).rejects.toMatchObject({ reason: "resolver_failed" });
   });
 
   it("rejects forged signatures (different signing key)", async () => {
