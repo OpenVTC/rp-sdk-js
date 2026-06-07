@@ -31,8 +31,9 @@
  *    for did:peer:2).
  */
 
-import { ed25519 } from "@noble/curves/ed25519";
-import { sha256 } from "@noble/hashes/sha256";
+import { ed25519 } from "@noble/curves/ed25519.js";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { base64urlnopad } from "@scure/base";
 
 import type { DidResolver } from "./did-resolver.js";
 
@@ -257,17 +258,12 @@ export async function verifyIdToken(
 // helpers
 // ---------------------------------------------------------------------------
 
+// Compact JWS encodes each segment as unpadded base64url (RFC 7515
+// §2). `@scure/base`'s `base64urlnopad` is the vetted decoder; it
+// rejects padding and non-alphabet bytes by throwing, which the
+// caller maps to the `malformed` reason.
 function base64urlDecode(b64url: string): Uint8Array {
-  const b64 =
-    b64url.replace(/-/g, "+").replace(/_/g, "/") +
-    "=".repeat((4 - (b64url.length % 4)) % 4);
-  if (typeof Buffer !== "undefined") {
-    return new Uint8Array(Buffer.from(b64, "base64"));
-  }
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
+  return base64urlnopad.decode(b64url);
 }
 
 function base64urlDecodeToString(b64url: string): string {

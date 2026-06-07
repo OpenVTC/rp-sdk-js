@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.2.0 — 2026-06-07
+
+### Security
+
+- **Resolved all 4 open Dependabot advisories** (1 critical, 3
+  moderate) in the dev-dependency tree by upgrading `vitest`
+  `1.x → 4.1.8`, which pulls in patched `vite`/`vite-node`/`esbuild`:
+  - `GHSA-5xrq-8626-4rwp` (critical) — Vitest UI arbitrary file
+    read / exec.
+  - `GHSA-4w7w-66w2-5vf9` (moderate) — Vite `.map` path traversal.
+  - `GHSA-67mh-4wv8-2f99` (moderate) — esbuild dev-server CORS.
+  - `npm audit` now reports 0 vulnerabilities.
+
+### Changed
+
+- **BREAKING (packaging): removed the `./express` subpath export.**
+  It pointed at `dist/express.js`, which never existed — any
+  `import … from "@openvtc/rp-sdk/express"` failed with
+  module-not-found. The Express adapter remains on the roadmap; the
+  export will return when the adapter ships. The orphaned `express`
+  peer dependency and `@types/express` dev dependency were removed
+  with it.
+- **Updated runtime dependencies to v2**: `@noble/curves`,
+  `@noble/hashes`, and `@scure/base` `1.x → 2.x`. The verification
+  API and behaviour are unchanged; v2 only altered the import
+  subpaths (`@noble/hashes/sha256` → `@noble/hashes/sha2.js`).
+- `verifyIdToken` now decodes JWS segments with `@scure/base`'s
+  vetted `base64urlnopad` codec instead of hand-rolled base64url +
+  `Buffer`/`atob` branching. Behaviour is identical; the audited
+  path carries less custom code.
+- Updated dev toolchain: `typescript 5.x → 6.x`,
+  `@types/node 20.x → 25.x`, `prettier 3.x → latest`.
+
+### Added
+
+- Direct test coverage for `KeyResolver` (`did-resolver.ts`) and the
+  session-cookie helpers (`session.ts`) — including the load-bearing
+  `HttpOnly` / `Secure` / `SameSite=Strict` cookie flags, which were
+  previously untested.
+
 ## 0.1.1 — 2026-05-28
 
 ### Fixed
