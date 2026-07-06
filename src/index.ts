@@ -57,3 +57,26 @@ export type {
   SessionCookieOptions,
   SessionCookieDescriptor,
 } from "./session.js";
+
+export {
+  verifyConfirmResponse,
+  verifyDataIntegrityProof,
+  buildConfirmRequest,
+  signConfirmRequest,
+  ConfirmVerificationError,
+  CONFIRM_REQUEST_TYPE,
+  CONFIRM_RESPONSE_TYPE,
+} from "./confirm.js";
+export type {
+  VerifyConfirmResponseParams,
+  VerifiedConfirmResponse,
+  ConfirmVerificationReason,
+  TrustTaskDocument,
+  DataIntegrityProof,
+  ConfirmRequestPayload,
+  ConfirmResponsePayload,
+  BuildConfirmRequestParams,
+  ConfirmSigner,
+} from "./confirm.js";
+
+export { jcsCanonicalize } from "./jcs.js";

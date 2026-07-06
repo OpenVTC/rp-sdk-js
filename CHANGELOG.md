@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`confirm/{request,response}/0.1` support** — the RP side of the
+  wallet consent protocol (trusttasks-tf). `verifyConfirmResponse`
+  verifies the wallet's `eddsa-jcs-2022` Data Integrity proof (the
+  proof *is* the consent record) and enforces the spec's consumer
+  checks: `subject === issuer === signer`, the challenge echo, and an
+  optional `recipient` audience binding. Failures surface as the typed
+  `ConfirmVerificationError`.
+- **`buildConfirmRequest` / `signConfirmRequest`** — construct a
+  spec-shaped `confirm/request` document and attach an `eddsa-jcs-2022`
+  proof via a caller-supplied `ConfirmSigner` (key management stays out
+  of the SDK).
+- **`verifyDataIntegrityProof`** and a `jcsCanonicalize` (RFC 8785)
+  helper — the byte-exact canonicalization the wallet and VTA use, so
+  proofs round-trip across implementations (covered by a
+  cross-implementation fixture signed by `@openvtc/pnm-core`).
+
 ## 0.2.0 — 2026-06-07
 
 ### Security
