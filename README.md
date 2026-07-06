@@ -90,6 +90,56 @@ class MultiMethodResolver implements DidResolver {
 }
 ```
 
+## Confirm (RP → wallet consent)
+
+Beyond login, the SDK verifies the wallet's answer to a
+[`confirm/{request,response}/0.1`](https://trusttasks.org/spec/confirm/response/0.1)
+consent exchange. You ask the wallet to confirm a specific action; it
+returns a `confirm/response` whose W3C Data Integrity `proof` **is** the
+cryptographic record of the user's decision.
+
+```ts
+import {
+  buildConfirmRequest,
+  signConfirmRequest,
+  verifyConfirmResponse,
+  KeyResolver,
+} from "@openvtc/rp-sdk";
+
+// 1. Build a request, bind the challenge server-side to (subject, action),
+//    and (per spec) sign it so `reason` is bound to your RP key.
+const request = buildConfirmRequest({
+  issuer: RP_DID,
+  subject: walletDid,
+  challenge, // ≥128-bit base64url nonce, persisted against this pending confirm
+  reason: "Confirm transfer of $1,000 to did:web:bob.example",
+  actionType: "payment.transfer",
+});
+await signConfirmRequest(request, rpSigner); // rpSigner: { verificationMethod, sign() }
+// …authcrypt + deliver `request` to the wallet over DIDComm…
+
+// 2. When the wallet's confirm/response arrives (already DIDComm-decrypted),
+//    verify the proof + framework bindings:
+const decision = await verifyConfirmResponse({
+  document: responseDoc,
+  subject: walletDid, // must equal issuer + proof signer
+  challenge,          // must be echoed bit-for-bit
+  audience: RP_DID,   // optional recipient cross-check
+  resolver: new KeyResolver(),
+});
+// decision.decision ∈ {"approved","denied"}; retain the document for audit.
+```
+
+`verifyConfirmResponse` verifies the `eddsa-jcs-2022` proof and enforces
+`subject === issuer === signer`, the challenge echo, and (optionally) the
+recipient audience. It does **not** do the stateful checks the SDK can't
+see — locating the pending request by challenge, consuming it single-use,
+and persisting the decision — those stay your responsibility. Failures
+surface as `ConfirmVerificationError` with a typed `reason`.
+
+The DIDComm transport (authcrypt pack/unpack, mediator forwarding) is not
+included; this module operates on the decrypted Trust-Task document.
+
 ## Roadmap
 
 Planned for follow-up minor versions:
@@ -97,8 +147,8 @@ Planned for follow-up minor versions:
 - `requireStepUp()` middleware — gates routes behind `acr=aal2`.
 - `refreshProxy()` middleware — drop-in `/auth/refresh` proxy.
 - Express + Fastify + Hono framework adapters.
-- DIDComm-transport variant for RPs that prefer the wallet's
-  authcrypt flow over the REST SIOPv2 flow.
+- DIDComm-transport packing/unpacking helpers, so the confirm verifier
+  above can be driven straight from an authcrypted mediator message.
 
 ## License
 

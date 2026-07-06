@@ -1,0 +1,47 @@
+{
+  "holderDid": "did:key:z6MkvBjFJ1BepK18634Upf4PyVGUgzLzrxzjGHTWdwtGu56U",
+  "rpDid": "did:key:z6MknMAQS9W99oxxCvY7ZZLFaupgZpsn9FRStBFayA8S83e7",
+  "approved": {
+    "id": "d94e13fa-c333-4e0a-8549-96c40e038cd1",
+    "type": "https://trusttasks.org/spec/confirm/response/0.1",
+    "issuer": "did:key:z6MkvBjFJ1BepK18634Upf4PyVGUgzLzrxzjGHTWdwtGu56U",
+    "recipient": "did:key:z6MknMAQS9W99oxxCvY7ZZLFaupgZpsn9FRStBFayA8S83e7",
+    "threadId": "thread-abc",
+    "issuedAt": "2026-07-05T11:43:28.525Z",
+    "payload": {
+      "subject": "did:key:z6MkvBjFJ1BepK18634Upf4PyVGUgzLzrxzjGHTWdwtGu56U",
+      "challenge": "VHJhbnNmZXJDb25maXJtTm9uY2VYWQ",
+      "decision": "approved"
+    },
+    "proof": {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkvBjFJ1BepK18634Upf4PyVGUgzLzrxzjGHTWdwtGu56U#z6MkvBjFJ1BepK18634Upf4PyVGUgzLzrxzjGHTWdwtGu56U",
+      "created": "2026-07-05T11:42:28.526Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "z2TYz6j6bFtHd192qBMW9HwPCAXFosAtgNSwUqgZ9WqtsDEoL7map4kJ7Ui4TMuqLq3LY7b5kZQtFDvYbgufs6kbX"
+    }
+  },
+  "denied": {
+    "id": "b87471cc-518c-4fb9-9088-72e76804cd34",
+    "type": "https://trusttasks.org/spec/confirm/response/0.1",
+    "issuer": "did:key:z6MkvBjFJ1BepK18634Upf4PyVGUgzLzrxzjGHTWdwtGu56U",
+    "recipient": "did:key:z6MknMAQS9W99oxxCvY7ZZLFaupgZpsn9FRStBFayA8S83e7",
+    "threadId": "thread-def",
+    "issuedAt": "2026-07-05T11:43:28.527Z",
+    "payload": {
+      "subject": "did:key:z6MkvBjFJ1BepK18634Upf4PyVGUgzLzrxzjGHTWdwtGu56U",
+      "challenge": "VHJhbnNmZXJDb25maXJtTm9uY2VYWQ",
+      "decision": "denied",
+      "deniedReason": "User does not recognize this transfer."
+    },
+    "proof": {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkvBjFJ1BepK18634Upf4PyVGUgzLzrxzjGHTWdwtGu56U#z6MkvBjFJ1BepK18634Upf4PyVGUgzLzrxzjGHTWdwtGu56U",
+      "created": "2026-07-05T11:42:28.527Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "z2sutRnaswjrUZtPkFoBbrZzvahzH5UGFp9aVr2TdNYshA1VwJNqMvKpDVpek6tTRy9RPr5RUCu2arfyorgYfZt4m"
+    }
+  }
+}
