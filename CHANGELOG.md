@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Security
+
+- **`jcsCanonicalize` now bounds its input.** Canonicalization
+  recurses once per nesting level, so a `confirm/response` body of
+  ~6 KB nested a few thousand levels deep made verification throw
+  `RangeError: Maximum call stack size exceeded` — an untyped crash of
+  the RP's verify call on a pre-authentication, attacker-influenced
+  document. Nesting deeper than `JCS_MAX_DEPTH` (100) or a canonical
+  form larger than `JCS_MAX_BYTES` (1 MiB) is now rejected with the
+  typed `JcsLimitExceededError`; both bounds are overridable per call
+  (`jcsCanonicalize(value, { maxDepth, maxBytes })`). Inside
+  `verifyConfirmResponse` / `verifyDataIntegrityProof` the rejection
+  surfaces as `ConfirmVerificationError` with the new
+  `document_too_complex` reason. Canonical output for every
+  in-spec document is byte-identical to before.
+
 ### Added
 
 - **`confirm/{request,response}/0.1` support** — the RP side of the

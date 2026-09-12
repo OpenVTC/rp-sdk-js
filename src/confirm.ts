@@ -22,7 +22,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { base58 } from "@scure/base";
 
 import type { DidResolver } from "./did-resolver.js";
-import { jcsCanonicalize } from "./jcs.js";
+import { jcsCanonicalize, JcsLimitExceededError } from "./jcs.js";
 
 export const CONFIRM_REQUEST_TYPE =
   "https://trusttasks.org/spec/confirm/request/0.1";
@@ -73,6 +73,7 @@ export interface ConfirmResponsePayload {
 export type ConfirmVerificationReason =
   | "wrong_type"
   | "malformed_payload"
+  | "document_too_complex"
   | "no_proof"
   | "unsupported_suite"
   | "wrong_proof_purpose"
@@ -239,8 +240,8 @@ export async function verifyDataIntegrityProof(
   delete docCopy.proof;
 
   const toVerify = new Uint8Array(64);
-  toVerify.set(sha256(new TextEncoder().encode(jcsCanonicalize(proofConfig))), 0);
-  toVerify.set(sha256(new TextEncoder().encode(jcsCanonicalize(docCopy))), 32);
+  toVerify.set(sha256(new TextEncoder().encode(canonicalizeBounded(proofConfig))), 0);
+  toVerify.set(sha256(new TextEncoder().encode(canonicalizeBounded(docCopy))), 32);
 
   let sig: Uint8Array;
   try {
@@ -255,6 +256,24 @@ export async function verifyDataIntegrityProof(
     throw new ConfirmVerificationError("proof_invalid", "Ed25519 signature verification failed");
   }
   return controller;
+}
+
+/**
+ * Canonicalize an untrusted document for the proof hash. `jcsCanonicalize`
+ * bounds nesting depth and canonical size, so a hostile `confirm/response`
+ * cannot exhaust the call stack (an untyped `RangeError`) or memory inside
+ * verification; re-raise that as a typed `ConfirmVerificationError` so callers
+ * that catch verification failures do not have to special-case it.
+ */
+function canonicalizeBounded(value: unknown): string {
+  try {
+    return jcsCanonicalize(value);
+  } catch (e) {
+    if (e instanceof JcsLimitExceededError) {
+      throw new ConfirmVerificationError("document_too_complex", e.message);
+    }
+    throw e;
+  }
 }
 
 export interface BuildConfirmRequestParams {

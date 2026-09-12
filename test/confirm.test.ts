@@ -96,6 +96,31 @@ describe("verifyConfirmResponse (cross-impl fixture from the wallet signer)", ()
     ).rejects.toMatchObject({ reason: "audience_mismatch" });
   });
 
+  it("rejects a deeply nested document instead of overflowing the stack", async () => {
+    // ~10 KB of nesting in an attacker-influenced field. The canonicalizer
+    // recurses per level, so before the depth bound this surfaced as
+    // `RangeError: Maximum call stack size exceeded` rather than a typed
+    // verification failure.
+    let deep: unknown = 0;
+    for (let i = 0; i < 5000; i++) deep = [deep];
+    const document = {
+      ...fixture.approved,
+      payload: { ...fixture.approved.payload, ext: deep },
+    };
+    const err = await verifyConfirmResponse({
+      document,
+      subject: fixture.holderDid,
+      challenge: CHALLENGE,
+      resolver,
+    }).then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(ConfirmVerificationError);
+    expect(err).not.toBeInstanceOf(RangeError);
+    expect(err).toMatchObject({ reason: "document_too_complex" });
+  });
+
   it("rejects a non-confirm-response document", async () => {
     await expect(
       verifyConfirmResponse({
