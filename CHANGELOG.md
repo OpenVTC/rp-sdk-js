@@ -2,6 +2,48 @@
 
 ## Unreleased
 
+### Security
+
+- **`jcsCanonicalize` now bounds its input.** Canonicalization
+  recurses once per nesting level, so a `confirm/response` body of
+  ~6 KB nested a few thousand levels deep made verification throw
+  `RangeError: Maximum call stack size exceeded` — an untyped crash of
+  the RP's verify call on a pre-authentication, attacker-influenced
+  document. Nesting deeper than `JCS_MAX_DEPTH` (100) or a canonical
+  form larger than `JCS_MAX_BYTES` (1 MiB) is now rejected with the
+  typed `JcsLimitExceededError`; both bounds are overridable per call
+  (`jcsCanonicalize(value, { maxDepth, maxBytes })`). Inside
+  `verifyConfirmResponse` / `verifyDataIntegrityProof` the rejection
+  surfaces as `ConfirmVerificationError` with the new
+  `document_too_complex` reason. Canonical output for every
+  in-spec document is byte-identical to before.
+
+- **Audience binding is now enforced whenever `audience` is passed.**
+  `verifyConfirmResponse` skipped the `recipient` cross-check when the
+  document carried no `recipient` at all, so a response bound to no RP
+  was accepted — and could be re-presented to a different RP that does
+  not bind the challenge server-side. Passing `audience` now requires a
+  `recipient` equal to it; a missing or different `recipient` fails with
+  the existing `audience_mismatch` reason. Callers that omit `audience`
+  are unaffected, and should start passing it.
+- **`expiresAt` / `issuedAt` are now checked.** Both fields were part
+  of the document type and signed by the wallet, but never read during
+  verification, so an indefinitely old decision verified fine.
+  `verifyConfirmResponse` now rejects a document whose `expiresAt` has
+  passed with the new `expired` reason, and takes two optional
+  parameters: `maxAgeSecs`, which bounds how far `issuedAt` may lie
+  behind now, and `now`, the clock reading to compare against
+  (defaults to the current time). Both checks run after the proof
+  verifies. They are defense in depth only — single use and the
+  authoritative freshness window still come from the caller's
+  server-side challenge binding, as the API docs say.
+- **The `confirm/response` challenge echo is compared in constant
+  time.** `verifyConfirmResponse` used `!==` while the SIOPv2 nonce
+  check already used `constantTimeEqual`, leaving one byte-timing
+  oracle on a secret the RP issued. The challenge is single-use and
+  ≥128 bits, so this was not meaningfully exploitable — the two
+  comparisons are now simply consistent.
+
 ### Added
 
 - **`confirm/{request,response}/0.1` support** — the RP side of the

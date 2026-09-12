@@ -22,7 +22,8 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { base58 } from "@scure/base";
 
 import type { DidResolver } from "./did-resolver.js";
-import { jcsCanonicalize } from "./jcs.js";
+import { jcsCanonicalize, JcsLimitExceededError } from "./jcs.js";
+import { constantTimeEqual } from "./verify-id-token.js";
 
 export const CONFIRM_REQUEST_TYPE =
   "https://trusttasks.org/spec/confirm/request/0.1";
@@ -73,6 +74,7 @@ export interface ConfirmResponsePayload {
 export type ConfirmVerificationReason =
   | "wrong_type"
   | "malformed_payload"
+  | "document_too_complex"
   | "no_proof"
   | "unsupported_suite"
   | "wrong_proof_purpose"
@@ -81,6 +83,7 @@ export type ConfirmVerificationReason =
   | "subject_mismatch"
   | "challenge_mismatch"
   | "audience_mismatch"
+  | "expired"
   | "missing_denied_reason";
 
 /** Thrown by {@link verifyConfirmResponse}. Inspect `.reason`. */
@@ -108,8 +111,18 @@ export interface VerifyConfirmResponseParams {
   /** Resolves a DID to its Ed25519 verification-method key. For `did:key`,
    *  {@link KeyResolver} works out of the box. */
   resolver: DidResolver;
-  /** Optional expected `recipient` (the RP's own DID) — cross-checked when set. */
+  /** The RP's own DID, cross-checked against the document `recipient`. When
+   *  set, the document MUST carry a `recipient` equal to it — a response with
+   *  no recipient is not bound to this RP. Recommended: always pass it. */
   audience?: string;
+  /** Clock reading for the `expiresAt` / `maxAgeSecs` checks. Defaults to the
+   *  current time; pass a fixed `Date` to test or to reuse one reading across
+   *  several verifications. */
+  now?: Date;
+  /** Reject a document whose `issuedAt` is more than this many seconds before
+   *  `now`. Requires a parseable `issuedAt` — with no age bound wanted, omit
+   *  it. The document's own `expiresAt` is always honoured when present. */
+  maxAgeSecs?: number;
 }
 
 export interface VerifiedConfirmResponse {
@@ -125,11 +138,18 @@ export interface VerifiedConfirmResponse {
  * Verify a wallet's `confirm/response/0.1`. Enforces the spec's consumer
  * requirements: valid Data Integrity proof; `subject === issuer === signer`;
  * `challenge` echoed bit-for-bit; `decision` well-formed (and `deniedReason`
- * present when denied); optional `recipient` audience binding.
+ * present when denied); and, when `audience` is given, a `recipient` equal to
+ * it (a document with no `recipient` is rejected — it is bound to no RP).
+ *
+ * Timeliness is checked as defense in depth: a document whose `expiresAt` has
+ * passed is rejected (`expired`), and `maxAgeSecs` additionally bounds how far
+ * `issuedAt` may lie behind `now`.
  *
  * The caller is still responsible for the stateful checks the SDK can't see:
  * locating the pending request by `challenge` (unknown/expired), consuming it
- * single-use, and persisting the response for audit.
+ * single-use, and persisting the response for audit. Those remain the real
+ * single-use and freshness controls — the checks here cannot replace them,
+ * because a document's own timestamps are only as trustworthy as its signer.
  *
  * @throws {ConfirmVerificationError}
  */
@@ -171,12 +191,62 @@ export async function verifyConfirmResponse(
     throw new ConfirmVerificationError("subject_mismatch", `subject ${payload.subject} != requested ${params.subject}`);
   }
 
-  if (payload.challenge !== params.challenge) {
-    throw new ConfirmVerificationError("challenge_mismatch", "response challenge does not match the bound challenge");
+  // Same constant-time compare the SIOPv2 nonce check uses — the challenge is
+  // the secret the RP bound to this pending confirm, so it is compared the way
+  // secrets are, not with `!==`.
+  if (!constantTimeEqual(payload.challenge, params.challenge)) {
+    throw new ConfirmVerificationError(
+      "challenge_mismatch",
+      "response challenge does not match the bound challenge",
+    );
   }
 
-  if (params.audience !== undefined && doc.recipient !== undefined && doc.recipient !== params.audience) {
-    throw new ConfirmVerificationError("audience_mismatch", `recipient ${doc.recipient} != ${params.audience}`);
+  // Audience binding is mandatory once the RP has told us its own DID. A
+  // response carrying no `recipient` is bound to nobody, so accepting it would
+  // let a response be re-presented to a different RP that does not bind the
+  // challenge server-side; fail closed instead of skipping the check.
+  if (params.audience !== undefined && doc.recipient !== params.audience) {
+    throw new ConfirmVerificationError(
+      "audience_mismatch",
+      `recipient ${doc.recipient ?? "(absent)"} != ${params.audience}`,
+    );
+  }
+
+  // expiresAt / issuedAt. Signed fields, so they are only checked after the
+  // proof verified; single-use and the authoritative freshness window still
+  // belong to the caller's server-side challenge binding.
+  const now = params.now ?? new Date();
+  if (doc.expiresAt !== undefined) {
+    const expiresAt = Date.parse(doc.expiresAt);
+    if (!Number.isFinite(expiresAt)) {
+      throw new ConfirmVerificationError(
+        "malformed_payload",
+        `unparseable expiresAt ${doc.expiresAt}`,
+      );
+    }
+    if (expiresAt <= now.getTime()) {
+      throw new ConfirmVerificationError(
+        "expired",
+        `document expired at ${doc.expiresAt} (now ${now.toISOString()})`,
+      );
+    }
+  }
+  if (params.maxAgeSecs !== undefined) {
+    const issuedAt =
+      doc.issuedAt === undefined ? Number.NaN : Date.parse(doc.issuedAt);
+    if (!Number.isFinite(issuedAt)) {
+      throw new ConfirmVerificationError(
+        "expired",
+        `maxAgeSecs is set but issuedAt is missing/unparseable (${doc.issuedAt ?? "absent"})`,
+      );
+    }
+    const ageSecs = (now.getTime() - issuedAt) / 1000;
+    if (ageSecs > params.maxAgeSecs) {
+      throw new ConfirmVerificationError(
+        "expired",
+        `document is ${Math.round(ageSecs)}s old, past maxAgeSecs=${params.maxAgeSecs}`,
+      );
+    }
   }
 
   return {
@@ -239,8 +309,8 @@ export async function verifyDataIntegrityProof(
   delete docCopy.proof;
 
   const toVerify = new Uint8Array(64);
-  toVerify.set(sha256(new TextEncoder().encode(jcsCanonicalize(proofConfig))), 0);
-  toVerify.set(sha256(new TextEncoder().encode(jcsCanonicalize(docCopy))), 32);
+  toVerify.set(sha256(new TextEncoder().encode(canonicalizeBounded(proofConfig))), 0);
+  toVerify.set(sha256(new TextEncoder().encode(canonicalizeBounded(docCopy))), 32);
 
   let sig: Uint8Array;
   try {
@@ -255,6 +325,24 @@ export async function verifyDataIntegrityProof(
     throw new ConfirmVerificationError("proof_invalid", "Ed25519 signature verification failed");
   }
   return controller;
+}
+
+/**
+ * Canonicalize an untrusted document for the proof hash. `jcsCanonicalize`
+ * bounds nesting depth and canonical size, so a hostile `confirm/response`
+ * cannot exhaust the call stack (an untyped `RangeError`) or memory inside
+ * verification; re-raise that as a typed `ConfirmVerificationError` so callers
+ * that catch verification failures do not have to special-case it.
+ */
+function canonicalizeBounded(value: unknown): string {
+  try {
+    return jcsCanonicalize(value);
+  } catch (e) {
+    if (e instanceof JcsLimitExceededError) {
+      throw new ConfirmVerificationError("document_too_complex", e.message);
+    }
+    throw e;
+  }
 }
 
 export interface BuildConfirmRequestParams {

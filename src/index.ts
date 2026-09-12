@@ -79,4 +79,10 @@ export type {
   ConfirmSigner,
 } from "./confirm.js";
 
-export { jcsCanonicalize } from "./jcs.js";
+export {
+  jcsCanonicalize,
+  JcsLimitExceededError,
+  JCS_MAX_DEPTH,
+  JCS_MAX_BYTES,
+} from "./jcs.js";
+export type { JcsCanonicalizeOptions, JcsLimit } from "./jcs.js";
