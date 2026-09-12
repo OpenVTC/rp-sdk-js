@@ -109,7 +109,9 @@ export interface VerifyConfirmResponseParams {
   /** Resolves a DID to its Ed25519 verification-method key. For `did:key`,
    *  {@link KeyResolver} works out of the box. */
   resolver: DidResolver;
-  /** Optional expected `recipient` (the RP's own DID) — cross-checked when set. */
+  /** The RP's own DID, cross-checked against the document `recipient`. When
+   *  set, the document MUST carry a `recipient` equal to it — a response with
+   *  no recipient is not bound to this RP. Recommended: always pass it. */
   audience?: string;
 }
 
@@ -126,7 +128,8 @@ export interface VerifiedConfirmResponse {
  * Verify a wallet's `confirm/response/0.1`. Enforces the spec's consumer
  * requirements: valid Data Integrity proof; `subject === issuer === signer`;
  * `challenge` echoed bit-for-bit; `decision` well-formed (and `deniedReason`
- * present when denied); optional `recipient` audience binding.
+ * present when denied); and, when `audience` is given, a `recipient` equal to
+ * it (a document with no `recipient` is rejected — it is bound to no RP).
  *
  * The caller is still responsible for the stateful checks the SDK can't see:
  * locating the pending request by `challenge` (unknown/expired), consuming it
@@ -176,8 +179,15 @@ export async function verifyConfirmResponse(
     throw new ConfirmVerificationError("challenge_mismatch", "response challenge does not match the bound challenge");
   }
 
-  if (params.audience !== undefined && doc.recipient !== undefined && doc.recipient !== params.audience) {
-    throw new ConfirmVerificationError("audience_mismatch", `recipient ${doc.recipient} != ${params.audience}`);
+  // Audience binding is mandatory once the RP has told us its own DID. A
+  // response carrying no `recipient` is bound to nobody, so accepting it would
+  // let a response be re-presented to a different RP that does not bind the
+  // challenge server-side; fail closed instead of skipping the check.
+  if (params.audience !== undefined && doc.recipient !== params.audience) {
+    throw new ConfirmVerificationError(
+      "audience_mismatch",
+      `recipient ${doc.recipient ?? "(absent)"} != ${params.audience}`,
+    );
   }
 
   return {

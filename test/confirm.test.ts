@@ -12,6 +12,7 @@ import {
   ConfirmVerificationError,
   KeyResolver,
   CONFIRM_REQUEST_TYPE,
+  CONFIRM_RESPONSE_TYPE,
   type ConfirmSigner,
   type TrustTaskDocument,
 } from "../src/index.js";
@@ -33,6 +34,51 @@ const fixture = JSON.parse(
 };
 
 const CHALLENGE = "VHJhbnNmZXJDb25maXJtTm9uY2VYWQ";
+
+// A signer over a fresh Ed25519 key, exposed as a did:key.
+function makeSigner(): { signer: ConfirmSigner; did: string } {
+  const priv = ed25519.utils.randomSecretKey();
+  const pub = ed25519.getPublicKey(priv);
+  const body = new Uint8Array(2 + pub.length);
+  body.set([0xed, 0x01], 0);
+  body.set(pub, 2);
+  const did = `did:key:z${base58.encode(body)}`;
+  return {
+    did,
+    signer: {
+      verificationMethod: `${did}#${did.slice("did:key:".length)}`,
+      sign: (input) => ed25519.sign(input, priv),
+    },
+  };
+}
+
+/**
+ * A `confirm/response` signed by a fresh holder key, so a test can vary the
+ * document fields the wallet fixture fixes — a missing `recipient`, an
+ * `expiresAt` in the past — and still present a document whose proof verifies.
+ * An override of `undefined` omits the field (JCS cannot encode `undefined`).
+ */
+async function makeSignedResponse(
+  overrides: Partial<TrustTaskDocument> = {},
+): Promise<{ document: TrustTaskDocument; did: string }> {
+  const { signer, did } = makeSigner();
+  const document: TrustTaskDocument = {
+    id: "urn:uuid:8c4ba2e1-6b3f-4f27-8c0a-6ad6b2f9c511",
+    type: CONFIRM_RESPONSE_TYPE,
+    issuer: did,
+    recipient: fixture.rpDid,
+    issuedAt: "2026-08-30T10:00:00.000Z",
+    payload: { subject: did, challenge: CHALLENGE, decision: "approved" },
+    ...overrides,
+  };
+  for (const key of Object.keys(document)) {
+    if ((document as Record<string, unknown>)[key] === undefined) {
+      delete (document as Record<string, unknown>)[key];
+    }
+  }
+  await signConfirmRequest(document, signer);
+  return { document, did };
+}
 
 describe("verifyConfirmResponse (cross-impl fixture from the wallet signer)", () => {
   it("verifies a wallet-signed approved response", async () => {
@@ -133,24 +179,49 @@ describe("verifyConfirmResponse (cross-impl fixture from the wallet signer)", ()
   });
 });
 
-describe("buildConfirmRequest + signConfirmRequest round-trip", () => {
-  // An RP-side signer over a fresh Ed25519 key, exposed as a did:key.
-  function makeSigner(): { signer: ConfirmSigner; did: string } {
-    const priv = ed25519.utils.randomSecretKey();
-    const pub = ed25519.getPublicKey(priv);
-    const body = new Uint8Array(2 + pub.length);
-    body.set([0xed, 0x01], 0);
-    body.set(pub, 2);
-    const did = `did:key:z${base58.encode(body)}`;
-    return {
-      did,
-      signer: {
-        verificationMethod: `${did}#${did.slice("did:key:".length)}`,
-        sign: (input) => ed25519.sign(input, priv),
-      },
-    };
-  }
+describe("verifyConfirmResponse audience binding", () => {
+  it("verifies a signed response whose recipient matches the audience", async () => {
+    const { document, did } = await makeSignedResponse();
+    const result = await verifyConfirmResponse({
+      document,
+      subject: did,
+      challenge: CHALLENGE,
+      audience: fixture.rpDid,
+      resolver,
+    });
+    expect(result.decision).toBe("approved");
+    expect(result.signer).toBe(did);
+  });
 
+  it("rejects a response with no recipient when an audience is expected", async () => {
+    // The audience check used to be skipped entirely when the document carried
+    // no `recipient`, leaving the response bound to no RP.
+    const { document, did } = await makeSignedResponse({ recipient: undefined });
+    expect(document.recipient).toBeUndefined();
+    await expect(
+      verifyConfirmResponse({
+        document,
+        subject: did,
+        challenge: CHALLENGE,
+        audience: fixture.rpDid,
+        resolver,
+      }),
+    ).rejects.toMatchObject({ reason: "audience_mismatch" });
+  });
+
+  it("still verifies a recipient-less response when no audience is passed", async () => {
+    const { document, did } = await makeSignedResponse({ recipient: undefined });
+    const result = await verifyConfirmResponse({
+      document,
+      subject: did,
+      challenge: CHALLENGE,
+      resolver,
+    });
+    expect(result.decision).toBe("approved");
+  });
+});
+
+describe("buildConfirmRequest + signConfirmRequest round-trip", () => {
   it("builds a spec-shaped request and its DI proof verifies", async () => {
     const { signer, did } = makeSigner();
     const doc = buildConfirmRequest({

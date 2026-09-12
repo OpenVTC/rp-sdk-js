@@ -18,6 +18,15 @@
   `document_too_complex` reason. Canonical output for every
   in-spec document is byte-identical to before.
 
+- **Audience binding is now enforced whenever `audience` is passed.**
+  `verifyConfirmResponse` skipped the `recipient` cross-check when the
+  document carried no `recipient` at all, so a response bound to no RP
+  was accepted — and could be re-presented to a different RP that does
+  not bind the challenge server-side. Passing `audience` now requires a
+  `recipient` equal to it; a missing or different `recipient` fails with
+  the existing `audience_mismatch` reason. Callers that omit `audience`
+  are unaffected, and should start passing it.
+
 ### Added
 
 - **`confirm/{request,response}/0.1` support** — the RP side of the
