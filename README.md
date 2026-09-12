@@ -132,7 +132,8 @@ const decision = await verifyConfirmResponse({
 ```
 
 `verifyConfirmResponse` verifies the `eddsa-jcs-2022` proof and enforces
-`subject === issuer === signer` and the challenge echo. Pass `audience`:
+`subject === issuer === signer` and the challenge echo (compared in
+constant time, like the SIOPv2 nonce). Pass `audience`:
 when you do, the document's `recipient` must be present and equal to it, so
 the response is cryptographically bound to your RP and cannot be re-presented
 to another one. A document whose `expiresAt` has passed is rejected with

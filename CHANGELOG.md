@@ -37,6 +37,12 @@
   verifies. They are defense in depth only — single use and the
   authoritative freshness window still come from the caller's
   server-side challenge binding, as the API docs say.
+- **The `confirm/response` challenge echo is compared in constant
+  time.** `verifyConfirmResponse` used `!==` while the SIOPv2 nonce
+  check already used `constantTimeEqual`, leaving one byte-timing
+  oracle on a secret the RP issued. The challenge is single-use and
+  ≥128 bits, so this was not meaningfully exploitable — the two
+  comparisons are now simply consistent.
 
 ### Added
 

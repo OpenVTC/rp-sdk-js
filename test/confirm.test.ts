@@ -124,6 +124,29 @@ describe("verifyConfirmResponse (cross-impl fixture from the wallet signer)", ()
     ).rejects.toBeInstanceOf(ConfirmVerificationError);
   });
 
+  it("verifies when the challenge matches, via the constant-time compare", async () => {
+    const result = await verifyConfirmResponse({
+      document: fixture.approved,
+      subject: fixture.holderDid,
+      // A separate string instance carrying the same bytes: equality must come
+      // from the bytes, not from identity.
+      challenge: CHALLENGE.split("").join(""),
+      resolver,
+    });
+    expect(result.challenge).toBe(CHALLENGE);
+  });
+
+  it("rejects a challenge differing only in its final byte", async () => {
+    await expect(
+      verifyConfirmResponse({
+        document: fixture.approved,
+        subject: fixture.holderDid,
+        challenge: `${CHALLENGE.slice(0, -1)}Z`,
+        resolver,
+      }),
+    ).rejects.toMatchObject({ reason: "challenge_mismatch" });
+  });
+
   it("rejects a subject other than the addressed one", async () => {
     await expect(
       verifyConfirmResponse({ document: fixture.approved, subject: "did:key:zSomeoneElse", challenge: CHALLENGE, resolver }),

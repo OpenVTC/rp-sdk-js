@@ -23,6 +23,7 @@ import { base58 } from "@scure/base";
 
 import type { DidResolver } from "./did-resolver.js";
 import { jcsCanonicalize, JcsLimitExceededError } from "./jcs.js";
+import { constantTimeEqual } from "./verify-id-token.js";
 
 export const CONFIRM_REQUEST_TYPE =
   "https://trusttasks.org/spec/confirm/request/0.1";
@@ -190,8 +191,14 @@ export async function verifyConfirmResponse(
     throw new ConfirmVerificationError("subject_mismatch", `subject ${payload.subject} != requested ${params.subject}`);
   }
 
-  if (payload.challenge !== params.challenge) {
-    throw new ConfirmVerificationError("challenge_mismatch", "response challenge does not match the bound challenge");
+  // Same constant-time compare the SIOPv2 nonce check uses — the challenge is
+  // the secret the RP bound to this pending confirm, so it is compared the way
+  // secrets are, not with `!==`.
+  if (!constantTimeEqual(payload.challenge, params.challenge)) {
+    throw new ConfirmVerificationError(
+      "challenge_mismatch",
+      "response challenge does not match the bound challenge",
+    );
   }
 
   // Audience binding is mandatory once the RP has told us its own DID. A
