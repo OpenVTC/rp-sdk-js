@@ -82,6 +82,7 @@ export type ConfirmVerificationReason =
   | "subject_mismatch"
   | "challenge_mismatch"
   | "audience_mismatch"
+  | "expired"
   | "missing_denied_reason";
 
 /** Thrown by {@link verifyConfirmResponse}. Inspect `.reason`. */
@@ -113,6 +114,14 @@ export interface VerifyConfirmResponseParams {
    *  set, the document MUST carry a `recipient` equal to it — a response with
    *  no recipient is not bound to this RP. Recommended: always pass it. */
   audience?: string;
+  /** Clock reading for the `expiresAt` / `maxAgeSecs` checks. Defaults to the
+   *  current time; pass a fixed `Date` to test or to reuse one reading across
+   *  several verifications. */
+  now?: Date;
+  /** Reject a document whose `issuedAt` is more than this many seconds before
+   *  `now`. Requires a parseable `issuedAt` — with no age bound wanted, omit
+   *  it. The document's own `expiresAt` is always honoured when present. */
+  maxAgeSecs?: number;
 }
 
 export interface VerifiedConfirmResponse {
@@ -131,9 +140,15 @@ export interface VerifiedConfirmResponse {
  * present when denied); and, when `audience` is given, a `recipient` equal to
  * it (a document with no `recipient` is rejected — it is bound to no RP).
  *
+ * Timeliness is checked as defense in depth: a document whose `expiresAt` has
+ * passed is rejected (`expired`), and `maxAgeSecs` additionally bounds how far
+ * `issuedAt` may lie behind `now`.
+ *
  * The caller is still responsible for the stateful checks the SDK can't see:
  * locating the pending request by `challenge` (unknown/expired), consuming it
- * single-use, and persisting the response for audit.
+ * single-use, and persisting the response for audit. Those remain the real
+ * single-use and freshness controls — the checks here cannot replace them,
+ * because a document's own timestamps are only as trustworthy as its signer.
  *
  * @throws {ConfirmVerificationError}
  */
@@ -188,6 +203,43 @@ export async function verifyConfirmResponse(
       "audience_mismatch",
       `recipient ${doc.recipient ?? "(absent)"} != ${params.audience}`,
     );
+  }
+
+  // expiresAt / issuedAt. Signed fields, so they are only checked after the
+  // proof verified; single-use and the authoritative freshness window still
+  // belong to the caller's server-side challenge binding.
+  const now = params.now ?? new Date();
+  if (doc.expiresAt !== undefined) {
+    const expiresAt = Date.parse(doc.expiresAt);
+    if (!Number.isFinite(expiresAt)) {
+      throw new ConfirmVerificationError(
+        "malformed_payload",
+        `unparseable expiresAt ${doc.expiresAt}`,
+      );
+    }
+    if (expiresAt <= now.getTime()) {
+      throw new ConfirmVerificationError(
+        "expired",
+        `document expired at ${doc.expiresAt} (now ${now.toISOString()})`,
+      );
+    }
+  }
+  if (params.maxAgeSecs !== undefined) {
+    const issuedAt =
+      doc.issuedAt === undefined ? Number.NaN : Date.parse(doc.issuedAt);
+    if (!Number.isFinite(issuedAt)) {
+      throw new ConfirmVerificationError(
+        "expired",
+        `maxAgeSecs is set but issuedAt is missing/unparseable (${doc.issuedAt ?? "absent"})`,
+      );
+    }
+    const ageSecs = (now.getTime() - issuedAt) / 1000;
+    if (ageSecs > params.maxAgeSecs) {
+      throw new ConfirmVerificationError(
+        "expired",
+        `document is ${Math.round(ageSecs)}s old, past maxAgeSecs=${params.maxAgeSecs}`,
+      );
+    }
   }
 
   return {

@@ -26,6 +26,17 @@
   `recipient` equal to it; a missing or different `recipient` fails with
   the existing `audience_mismatch` reason. Callers that omit `audience`
   are unaffected, and should start passing it.
+- **`expiresAt` / `issuedAt` are now checked.** Both fields were part
+  of the document type and signed by the wallet, but never read during
+  verification, so an indefinitely old decision verified fine.
+  `verifyConfirmResponse` now rejects a document whose `expiresAt` has
+  passed with the new `expired` reason, and takes two optional
+  parameters: `maxAgeSecs`, which bounds how far `issuedAt` may lie
+  behind now, and `now`, the clock reading to compare against
+  (defaults to the current time). Both checks run after the proof
+  verifies. They are defense in depth only — single use and the
+  authoritative freshness window still come from the caller's
+  server-side challenge binding, as the API docs say.
 
 ### Added
 

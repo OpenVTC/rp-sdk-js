@@ -196,7 +196,9 @@ describe("verifyConfirmResponse audience binding", () => {
   it("rejects a response with no recipient when an audience is expected", async () => {
     // The audience check used to be skipped entirely when the document carried
     // no `recipient`, leaving the response bound to no RP.
-    const { document, did } = await makeSignedResponse({ recipient: undefined });
+    const { document, did } = await makeSignedResponse({
+      recipient: undefined,
+    });
     expect(document.recipient).toBeUndefined();
     await expect(
       verifyConfirmResponse({
@@ -210,7 +212,9 @@ describe("verifyConfirmResponse audience binding", () => {
   });
 
   it("still verifies a recipient-less response when no audience is passed", async () => {
-    const { document, did } = await makeSignedResponse({ recipient: undefined });
+    const { document, did } = await makeSignedResponse({
+      recipient: undefined,
+    });
     const result = await verifyConfirmResponse({
       document,
       subject: did,
@@ -218,6 +222,105 @@ describe("verifyConfirmResponse audience binding", () => {
       resolver,
     });
     expect(result.decision).toBe("approved");
+  });
+});
+
+describe("verifyConfirmResponse timeliness", () => {
+  // makeSignedResponse stamps issuedAt 2026-08-30T10:00:00Z, so at NOW the
+  // default document is exactly 60s old.
+  const NOW = new Date("2026-08-30T10:01:00.000Z");
+
+  it("rejects a document whose expiresAt has passed", async () => {
+    const { document, did } = await makeSignedResponse({
+      expiresAt: "2026-08-30T10:00:30.000Z",
+    });
+    await expect(
+      verifyConfirmResponse({
+        document,
+        subject: did,
+        challenge: CHALLENGE,
+        now: NOW,
+        resolver,
+      }),
+    ).rejects.toMatchObject({ reason: "expired" });
+  });
+
+  it("verifies a document whose expiresAt is still in the future", async () => {
+    const { document, did } = await makeSignedResponse({
+      expiresAt: "2026-08-30T10:05:00.000Z",
+    });
+    const result = await verifyConfirmResponse({
+      document,
+      subject: did,
+      challenge: CHALLENGE,
+      now: NOW,
+      resolver,
+    });
+    expect(result.decision).toBe("approved");
+  });
+
+  it("verifies a document that carries no expiresAt", async () => {
+    const { document, did } = await makeSignedResponse();
+    const result = await verifyConfirmResponse({
+      document,
+      subject: did,
+      challenge: CHALLENGE,
+      now: NOW,
+      resolver,
+    });
+    expect(result.decision).toBe("approved");
+  });
+
+  it("rejects an unparseable expiresAt", async () => {
+    const { document, did } = await makeSignedResponse({
+      expiresAt: "not-a-timestamp",
+    });
+    await expect(
+      verifyConfirmResponse({
+        document,
+        subject: did,
+        challenge: CHALLENGE,
+        now: NOW,
+        resolver,
+      }),
+    ).rejects.toMatchObject({ reason: "malformed_payload" });
+  });
+
+  it("applies maxAgeSecs to issuedAt", async () => {
+    const { document, did } = await makeSignedResponse();
+    await expect(
+      verifyConfirmResponse({
+        document,
+        subject: did,
+        challenge: CHALLENGE,
+        now: NOW,
+        maxAgeSecs: 30,
+        resolver,
+      }),
+    ).rejects.toMatchObject({ reason: "expired" });
+    const result = await verifyConfirmResponse({
+      document,
+      subject: did,
+      challenge: CHALLENGE,
+      now: NOW,
+      maxAgeSecs: 120,
+      resolver,
+    });
+    expect(result.decision).toBe("approved");
+  });
+
+  it("rejects maxAgeSecs against a document with no issuedAt", async () => {
+    const { document, did } = await makeSignedResponse({ issuedAt: undefined });
+    await expect(
+      verifyConfirmResponse({
+        document,
+        subject: did,
+        challenge: CHALLENGE,
+        now: NOW,
+        maxAgeSecs: 300,
+        resolver,
+      }),
+    ).rejects.toMatchObject({ reason: "expired" });
   });
 });
 

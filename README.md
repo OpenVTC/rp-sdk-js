@@ -125,6 +125,7 @@ const decision = await verifyConfirmResponse({
   subject: walletDid, // must equal issuer + proof signer
   challenge,          // must be echoed bit-for-bit
   audience: RP_DID,   // recommended: binds the response to your RP DID
+  maxAgeSecs: 300,    // optional: also bound how old issuedAt may be
   resolver: new KeyResolver(),
 });
 // decision.decision ∈ {"approved","denied"}; retain the document for audit.
@@ -134,7 +135,10 @@ const decision = await verifyConfirmResponse({
 `subject === issuer === signer` and the challenge echo. Pass `audience`:
 when you do, the document's `recipient` must be present and equal to it, so
 the response is cryptographically bound to your RP and cannot be re-presented
-to another one. It does **not** do the stateful checks the SDK can't
+to another one. A document whose `expiresAt` has passed is rejected with
+reason `expired`, and `maxAgeSecs` bounds how far its `issuedAt` may lie
+behind now (pass `now` to supply the clock yourself). It does **not** do
+the stateful checks the SDK can't
 see — locating the pending request by challenge, consuming it single-use,
 and persisting the decision — those stay your responsibility. Failures
 surface as `ConfirmVerificationError` with a typed `reason`.
