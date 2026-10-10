@@ -22,7 +22,9 @@ import {
 } from "../oob/link.js";
 import { createTriggerLinkElement, type QrRenderOptions } from "../oob/qr.js";
 import {
+  OOB_ERRORS,
   OOB_TYPES,
+  isMatchNumber,
   type OobDocument,
   type RedeemResponse,
   type RequestResponse,
@@ -53,14 +55,17 @@ export type SignInState =
   | {
       status: "confirm";
       subject: string;
-      displayName?: string;
-      notAfter?: Date;
+      displayName: string;
+      notAfter: Date;
+      /** The redeem response's `ext`: a bearer-token service's tokens, by namespace. */
+      ext?: Record<string, unknown>;
     }
   | {
       status: "signedIn";
       subject: string;
-      displayName?: string;
-      notAfter?: Date;
+      displayName: string;
+      notAfter: Date;
+      ext?: Record<string, unknown>;
     }
   | { status: "declined" }
   | { status: "cancelled" }
@@ -68,7 +73,11 @@ export type SignInState =
   | { status: "error"; code: string; message: string };
 
 export interface SignInOptions {
-  /** URL of the service's trust-task endpoint, e.g. `/v1/trust-tasks`. */
+  /**
+   * The service's `TrustTaskHTTPS` `serviceEndpoint`, exactly as published
+   * (e.g. `https://members.example.org/v1/trust-tasks`). Used as is; no path
+   * is appended. {@link trustTaskEndpoint} reads it from a DID document.
+   */
   endpoint: string;
   /** The service (VTC) DID: `recipient` of every document and `_from`. */
   serviceDid: string;
@@ -187,11 +196,13 @@ export class SignInController {
       if (run !== this.run) return;
       if (!res.ok) throw new SignInError(res.code, res.message, res.details);
       const { requestId, claimDeadline } = res.payload as RequestResponse;
-      const expSecs =
-        typeof claimDeadline === "number"
-          ? claimDeadline
-          : Math.floor(Date.parse(claimDeadline) / 1000);
-      if (typeof requestId !== "string" || !Number.isSafeInteger(expSecs)) {
+      // Integer epoch seconds only (C9), written into `_exp` unchanged.
+      const expSecs = claimDeadline;
+      if (
+        typeof requestId !== "string" ||
+        !Number.isSafeInteger(expSecs) ||
+        expSecs < 0
+      ) {
         throw new SignInError(
           "malformedResponse",
           "the service returned an unusable request",
@@ -247,13 +258,7 @@ export class SignInController {
   /** "Continue as …?": the member confirmed. */
   confirm(): void {
     if (this.current.status !== "confirm") return;
-    const { subject, displayName, notAfter } = this.current;
-    this.set({
-      status: "signedIn",
-      subject,
-      ...(displayName ? { displayName } : {}),
-      ...(notAfter ? { notAfter } : {}),
-    });
+    this.set({ ...this.current, status: "signedIn" });
   }
 
   /** "Not me": sign out at once. */
@@ -283,9 +288,13 @@ export class SignInController {
   }
 
   /** Sign a document as `K_b` (base design section 9), addressed to the service. */
-  async signDocument<P>(type: string, payload: P): Promise<OobDocument<P>> {
+  async signDocument<P>(
+    type: string,
+    payload: P,
+    options: { proofPurpose?: "authentication" | "assertionMethod" } = {},
+  ): Promise<OobDocument<P>> {
     if (!this.key) throw new SignInError("noKey", "no session key");
-    return this.signed(type, payload);
+    return this.signed(type, payload, options.proofPurpose);
   }
 
   /** Remove listeners and stop polling. */
@@ -322,47 +331,57 @@ export class SignInController {
       if (run !== this.run) return;
       failures = 0;
       if (res.ok) {
-        const body = res.payload as Partial<RedeemResponse>;
-        if (typeof body.subject !== "string") {
+        const body = (res.payload ?? {}) as Partial<RedeemResponse>;
+        if (
+          typeof body.subject !== "string" ||
+          !Number.isSafeInteger(body.notAfter)
+        ) {
           return this.fail(
-            new SignInError("malformedResponse", "redeem returned no subject"),
+            new SignInError(
+              "malformedResponse",
+              "redeem returned no subject or no integer notAfter",
+            ),
           );
         }
         this.clearTimers();
         this.hideCode();
         if (this.key?.keyPair) await this.keyStore.save(this.key.keyPair);
         this.requestId = null;
-        const notAfter =
-          typeof body.notAfter === "string"
-            ? new Date(body.notAfter)
+        const ext =
+          body.ext && typeof body.ext === "object" && !Array.isArray(body.ext)
+            ? body.ext
             : undefined;
         this.set({
           status: "confirm",
           subject: body.subject,
-          ...(body.displayName ? { displayName: body.displayName } : {}),
-          ...(notAfter ? { notAfter } : {}),
+          displayName:
+            typeof body.displayName === "string" && body.displayName
+              ? body.displayName
+              : body.subject,
+          notAfter: new Date(body.notAfter! * 1000),
+          ...(ext ? { ext } : {}),
         });
         return;
       }
       switch (res.code) {
-        case "pending": {
+        case OOB_ERRORS.pending: {
           const n = res.details?.matchNumber;
-          if (typeof n === "string" && this.current.status === "waiting") {
+          if (isMatchNumber(n) && this.current.status === "waiting") {
             this.clearTimers();
             this.hideCode();
             this.set({ status: "claimed", requestId, matchNumber: n });
           }
           continue;
         }
-        case "rateLimited":
+        case OOB_ERRORS.rateLimited:
           await sleep(1000);
           continue;
-        case "declined":
+        case OOB_ERRORS.declined:
           return this.finish(
             res.details?.state === "cancelled" ? "cancelled" : "declined",
           );
-        case "requestExpired":
-        case "requestNotFound":
+        case OOB_ERRORS.requestExpired:
+        case OOB_ERRORS.requestNotFound:
           return this.finish("expired");
         default:
           return this.fail(new SignInError(res.code, res.message, res.details));
@@ -465,8 +484,13 @@ export class SignInController {
     }
   }
 
-  private async signed<P>(type: string, payload: P): Promise<OobDocument<P>> {
+  private async signed<P>(
+    type: string,
+    payload: P,
+    proofPurpose: "authentication" | "assertionMethod" = "authentication",
+  ): Promise<OobDocument<P>> {
     const key = this.key!;
+    // The starter key signs for `authentication` (CONVENTIONS.md section 5).
     return signOobDocument(
       buildOobDocument({
         type,
@@ -475,6 +499,7 @@ export class SignInController {
         payload,
       }),
       key,
+      { proofPurpose },
     );
   }
 
@@ -518,7 +543,7 @@ export class SignInController {
         typeof p.code === "string"
           ? p.code
           : res.status === 429
-            ? "rateLimited"
+            ? OOB_ERRORS.rateLimited
             : `http${res.status}`;
       return {
         ok: false,

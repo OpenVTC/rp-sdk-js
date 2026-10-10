@@ -26,8 +26,10 @@ import {
   verifyOobIdentify,
 } from "./verify.js";
 import {
+  OOB_ERRORS as E,
   OOB_TYPES,
   TRUST_TASK_ERROR_TYPE,
+  isMatchNumber,
   type CancelPayload,
   type GrantPayload,
   type OobDocument,
@@ -39,6 +41,7 @@ import {
   type RequestPayload,
   type RequestResponse,
   type RespondPayload,
+  type RespondResponse,
   type Step1Response,
   type Step2Response,
   type TrustTaskErrorPayload,
@@ -146,18 +149,18 @@ export class OobError extends Error {
   /** A suggested HTTP status. */
   get httpStatus(): number {
     switch (this.code) {
-      case "rateLimited":
+      case E.rateLimited:
         return 429;
-      case "requestNotFound":
+      case E.requestNotFound:
         return 404;
-      case "notAuthorized":
-      case "notClaimant":
-      case "notStarter":
+      case E.notAuthorized:
+      case E.notClaimant:
+      case E.notStarter:
         return 403;
-      case "malformedRequest":
-      case "keyUnsupported":
-      case "purposeUnsupported":
-      case "modeUnsupported":
+      case E.malformedRequest:
+      case E.keyUnsupported:
+      case E.purposeUnsupported:
+      case E.modeUnsupported:
         return 400;
       default:
         return 409;
@@ -193,9 +196,15 @@ export interface OobSession {
   sessionKey: string;
   amr: ["did", "oob", "uv"];
   notAfter: Date;
-  displayName?: string;
+  /** The display name, or the DID when there is none. */
+  displayName: string;
   /** The signed grant, for the audit record. */
   grant: OobDocument<GrantPayload>;
+  /**
+   * Extensions for the redeem response, from `redeemExt`: a bearer-token
+   * service puts its tokens here under its own namespace.
+   */
+  ext?: Record<string, unknown>;
 }
 
 export interface OobSignInServiceOptions {
@@ -211,6 +220,14 @@ export interface OobSignInServiceOptions {
   responseSigner: EddsaJcsSigner;
   /** Is this DID an active member? Called before any DID resolution. */
   isActiveMember(did: string): Promise<boolean>;
+  /**
+   * For a service without cookie sessions: the `ext` of the redeem response,
+   * keyed by reverse-DNS namespace (e.g. `com.affinidi.did-hosting`), which
+   * reaches the starter only. Never put tokens anywhere else.
+   */
+  redeemExt?(
+    session: Omit<OobSession, "ext">,
+  ): Promise<Record<string, unknown> | undefined>;
   /** Display name for the "Continue as …?" step. */
   displayName?(did: string): Promise<string | undefined>;
   /** Default 120. */
@@ -295,11 +312,10 @@ export class OobSignInService {
           const session = await this.redeem(raw, conn);
           const body: RedeemResponse = {
             subject: session.subject,
-            ...(session.displayName
-              ? { displayName: session.displayName }
-              : {}),
-            notAfter: isoSeconds(session.notAfter),
+            displayName: session.displayName,
+            notAfter: Math.floor(session.notAfter.getTime() / 1000),
             amr: session.amr,
+            ...(session.ext ? { ext: session.ext } : {}),
           };
           return { ...this.ok(raw, body), session };
         }
@@ -307,7 +323,7 @@ export class OobSignInService {
           return this.ok(raw, await this.cancel(raw));
         default:
           throw new OobError(
-            "malformedRequest",
+            E.malformedRequest,
             `unsupported type ${String(type)}`,
           );
       }
@@ -315,7 +331,7 @@ export class OobSignInService {
       const err =
         e instanceof OobError
           ? e
-          : new OobError("malformedRequest", "request refused");
+          : new OobError(E.malformedRequest, "request refused");
       if (!(e instanceof OobError)) {
         // Unexpected: keep the detail out of the response.
         console.error("auth/oob handler error", e);
@@ -359,9 +375,9 @@ export class OobSignInService {
   ): Promise<RequestResponse> {
     const v = this.verifyKeyDoc<RequestPayload>(raw, OOB_TYPES.request);
     if (v.payload.purpose !== "login")
-      throw new OobError("purposeUnsupported", "purpose must be login");
+      throw new OobError(E.purposeUnsupported, "purpose must be login");
     if (v.payload.mode !== "scan")
-      throw new OobError("modeUnsupported", "mode must be scan");
+      throw new OobError(E.modeUnsupported, "mode must be scan");
     await this.fresh(v.id);
     const now = this.o.now();
     // Whole seconds, so `_exp` and `claimDeadline` say the same thing.
@@ -387,7 +403,7 @@ export class OobSignInService {
       },
       claimDeadline,
     });
-    return { requestId, claimDeadline: isoSeconds(new Date(claimDeadline)) };
+    return { requestId, claimDeadline: claimDeadline / 1000 };
   }
 
   // ---- claim (7.3) -------------------------------------------------------
@@ -403,9 +419,9 @@ export class OobSignInService {
     await this.fresh(v.id);
     const rec = await this.current(v.requestId);
     if (rec.state === "expired")
-      throw new OobError("requestExpired", "request expired");
+      throw new OobError(E.requestExpired, "request expired");
     if (rec.state !== "pending")
-      throw new OobError("alreadyClaimed", "already claimed");
+      throw new OobError(E.alreadyClaimed, "already claimed");
     const now = this.o.now().getTime();
     const next: OobRequestRecord = {
       ...rec,
@@ -416,7 +432,7 @@ export class OobSignInService {
       decisionDeadline: now + this.o.decisionWindowSecs * 1000,
     };
     if (!(await this.cas(rec, next)))
-      throw new OobError("alreadyClaimed", "already claimed");
+      throw new OobError(E.alreadyClaimed, "already claimed");
     return this.signed(raw, v.approverKey, this.step1(next));
   }
 
@@ -433,7 +449,7 @@ export class OobSignInService {
       | undefined;
     const requestId = identify?.payload?.requestId;
     if (typeof requestId !== "string")
-      throw new OobError("malformedRequest", "identify.requestId missing");
+      throw new OobError(E.malformedRequest, "identify.requestId missing");
     const rec = await this.lockHolderRecord(requestId, v.issuer, "claimed");
     await this.fresh(v.id);
 
@@ -448,12 +464,12 @@ export class OobSignInService {
       throw err;
     };
     if (identify!.payload.approverKey !== rec.approverKey) {
-      return decline(new OobError("notAuthorized", "not authorized"));
+      return decline(new OobError(E.notAuthorized, "not authorized"));
     }
     const did = identify!.issuer;
     // ACL check on the issuer string, before any DID resolution (T15).
     if (typeof did !== "string" || !(await this.o.isActiveMember(did))) {
-      return decline(new OobError("notAuthorized", "not authorized"));
+      return decline(new OobError(E.notAuthorized, "not authorized"));
     }
     let verified;
     try {
@@ -464,14 +480,17 @@ export class OobSignInService {
         approverKey: rec.approverKey!,
       });
     } catch {
-      return decline(new OobError("notAuthorized", "not authorized"));
+      return decline(new OobError(E.notAuthorized, "not authorized"));
     }
     if (!(await this.o.store.rememberDocumentId(verified.id, this.idTtl()))) {
-      return decline(new OobError("notAuthorized", "not authorized"));
+      return decline(new OobError(E.notAuthorized, "not authorized"));
     }
-    if (verified.payload.enteredNumber !== rec.matchNumber) {
+    if (
+      !isMatchNumber(verified.payload.enteredNumber) ||
+      verified.payload.enteredNumber !== rec.matchNumber
+    ) {
       return decline(
-        new OobError("numberMismatch", "the number does not match"),
+        new OobError(E.numberMismatch, "the number does not match"),
       );
     }
 
@@ -492,14 +511,14 @@ export class OobSignInService {
       step2Digest: computeContextDigest(signed),
     };
     if (!(await this.cas(rec, next)))
-      throw new OobError("requestExpired", "request changed");
+      throw new OobError(E.requestExpired, "request changed");
     return signed;
   }
 
   // ---- respond (7.5) -----------------------------------------------------
 
   /** `auth/oob/respond`: record the member's signed decision. */
-  async respond(raw: unknown): Promise<{ status: "ok" }> {
+  async respond(raw: unknown): Promise<RespondResponse> {
     const v = this.verifyKeyDoc<RespondPayload>(raw, OOB_TYPES.respond);
     const requestId = (
       v.payload.grant as unknown as
@@ -507,7 +526,7 @@ export class OobSignInService {
         | undefined
     )?.payload?.requestId;
     if (typeof requestId !== "string")
-      throw new OobError("malformedRequest", "grant.requestId missing");
+      throw new OobError(E.malformedRequest, "grant.requestId missing");
     const rec = await this.lockHolderRecord(requestId, v.issuer, "identified");
     await this.fresh(v.id);
 
@@ -537,21 +556,19 @@ export class OobSignInService {
       const mismatch =
         reason === "context_mismatch" ||
         reason === "session_key_mismatch" ||
-        reason === "origin_mismatch" ||
-        reason === "approver_mismatch" ||
-        reason === "request_mismatch";
+        reason === "origin_mismatch";
       return decline(
         new OobError(
-          mismatch ? "contextMismatch" : "notAuthorized",
+          mismatch ? E.contextMismatch : E.notAuthorized,
           mismatch ? "context mismatch" : "not authorized",
         ),
       );
     }
     if (!(await this.o.store.rememberDocumentId(grant.id, this.idTtl()))) {
-      return decline(new OobError("notAuthorized", "not authorized"));
+      return decline(new OobError(E.notAuthorized, "not authorized"));
     }
     if (!(await this.o.isActiveMember(rec.identifiedDid!))) {
-      return decline(new OobError("notAuthorized", "not authorized"));
+      return decline(new OobError(E.notAuthorized, "not authorized"));
     }
     const next: OobRequestRecord = {
       ...rec,
@@ -561,8 +578,8 @@ export class OobSignInService {
       startNetwork: undefined,
     };
     if (!(await this.cas(rec, next)))
-      throw new OobError("alreadyDecided", "already decided");
-    return { status: "ok" };
+      throw new OobError(E.alreadyDecided, "already decided");
+    return { status: next.state === "approved" ? "approved" : "declined" };
   }
 
   // ---- redeem (7.6) ------------------------------------------------------
@@ -576,16 +593,16 @@ export class OobSignInService {
   async redeem(raw: unknown, conn: OobConnection = {}): Promise<OobSession> {
     const v = this.verifyKeyDoc<RedeemPayload>(raw, OOB_TYPES.redeem);
     if (typeof v.payload.requestId !== "string") {
-      throw new OobError("malformedRequest", "requestId missing");
+      throw new OobError(E.malformedRequest, "requestId missing");
     }
     let rec = await this.current(v.payload.requestId);
     if (rec.startKey !== v.issuer)
-      throw new OobError("notStarter", "not the starter");
+      throw new OobError(E.notStarter, "not the starter");
     await this.fresh(v.id);
 
     if (this.openPolls.has(rec.requestId)) {
       throw new OobError(
-        "rateLimited",
+        E.rateLimited,
         "a poll is already open for this request",
       );
     }
@@ -596,17 +613,17 @@ export class OobSignInService {
         rec = await this.current(rec.requestId);
         if (rec.state === "approved") return await this.consume(rec);
         if (rec.state === "declined" || rec.state === "cancelled") {
-          throw new OobError("declined", `request ${rec.state}`, {
+          throw new OobError(E.declined, `request ${rec.state}`, {
             state: rec.state,
           });
         }
         if (rec.state === "expired" || rec.state === "consumed") {
-          throw new OobError("requestExpired", "request expired", {
+          throw new OobError(E.requestExpired, "request expired", {
             state: rec.state,
           });
         }
         if (Date.now() >= until || conn.signal?.aborted) {
-          throw new OobError("pending", "not decided yet", {
+          throw new OobError(E.pending, "not decided yet", {
             state: rec.state,
             ...(rec.matchNumber ? { matchNumber: rec.matchNumber } : {}),
           });
@@ -629,21 +646,27 @@ export class OobSignInService {
       version: rec.version + 1,
     };
     if (!(await this.cas(rec, next)))
-      throw new OobError("requestExpired", "already redeemed");
+      throw new OobError(E.requestExpired, "already redeemed");
     const did = rec.identifiedDid!;
     if (!(await this.o.isActiveMember(did)))
-      throw new OobError("notAuthorized", "not authorized");
-    const grantNotAfter = Date.parse(rec.grant!.payload.notAfter);
+      throw new OobError(E.notAuthorized, "not authorized");
+    const grantNotAfter = rec.grant!.payload.notAfter * 1000;
     const limit = this.o.now().getTime() + this.o.sessionLimitSecs * 1000;
-    const displayName = await this.o.displayName?.(did);
-    return {
+    const displayName = (await this.o.displayName?.(did)) || did;
+    const session: OobSession = {
       subject: did,
       sessionKey: rec.startKey,
       amr: ["did", "oob", "uv"],
-      notAfter: new Date(Math.min(grantNotAfter, limit)),
-      ...(displayName ? { displayName } : {}),
+      // Whole seconds: the wire carries integer epoch seconds.
+      notAfter: new Date(
+        Math.floor(Math.min(grantNotAfter, limit) / 1000) * 1000,
+      ),
+      displayName: displayName.slice(0, 128),
       grant: rec.grant!,
     };
+    const ext = await this.o.redeemExt?.(session);
+    if (ext && Object.keys(ext).length > 0) session.ext = ext;
+    return session;
   }
 
   // ---- cancel ------------------------------------------------------------
@@ -652,15 +675,18 @@ export class OobSignInService {
   async cancel(raw: unknown): Promise<{ status: "cancelled" }> {
     const v = this.verifyKeyDoc<CancelPayload>(raw, OOB_TYPES.cancel);
     if (typeof v.payload.requestId !== "string")
-      throw new OobError("malformedRequest", "requestId missing");
+      throw new OobError(E.malformedRequest, "requestId missing");
     const rec = await this.current(v.payload.requestId);
     if (v.issuer !== rec.startKey && v.issuer !== rec.approverKey) {
-      throw new OobError("notAuthorized", "not authorized");
+      throw new OobError(E.notAuthorized, "not authorized");
     }
     await this.fresh(v.id);
     if (rec.state === "cancelled") return { status: "cancelled" };
+    if (rec.state === "expired" || rec.state === "consumed") {
+      throw new OobError(E.requestExpired, `request ${rec.state}`);
+    }
     if (FINAL.includes(rec.state) || rec.state === "approved") {
-      throw new OobError("alreadyDecided", `request ${rec.state}`);
+      throw new OobError(E.alreadyDecided, `request ${rec.state}`);
     }
     const next = {
       ...rec,
@@ -669,7 +695,7 @@ export class OobSignInService {
       startNetwork: undefined,
     };
     if (!(await this.cas(rec, next)))
-      throw new OobError("alreadyDecided", "request changed");
+      throw new OobError(E.alreadyDecided, "request changed");
     return { status: "cancelled" };
   }
 
@@ -695,7 +721,7 @@ export class OobSignInService {
 
   private async fresh(id: string): Promise<void> {
     if (!(await this.o.store.rememberDocumentId(id, this.idTtl()))) {
-      throw new OobError("notAuthorized", "document id already used");
+      throw new OobError(E.notAuthorized, "document id already used");
     }
   }
 
@@ -703,7 +729,7 @@ export class OobSignInService {
   private async current(requestId: string): Promise<OobRequestRecord> {
     for (;;) {
       const rec = await this.o.store.get(requestId);
-      if (!rec) throw new OobError("requestNotFound", "no such request");
+      if (!rec) throw new OobError(E.requestNotFound, "no such request");
       const now = this.o.now().getTime();
       const lapsed =
         (rec.state === "pending" && now > rec.claimDeadline) ||
@@ -729,13 +755,16 @@ export class OobSignInService {
   ): Promise<OobRequestRecord> {
     const rec = await this.current(requestId);
     if (!rec.approverKey || rec.approverKey !== issuer) {
-      throw new OobError("notClaimant", "not the claimant");
+      throw new OobError(E.notClaimant, "not the claimant");
     }
     if (rec.state === "expired")
-      throw new OobError("requestExpired", "request expired");
+      throw new OobError(E.requestExpired, "request expired");
     if (rec.state !== expected) {
       throw new OobError(
-        expected === "identified" ? "alreadyDecided" : "requestExpired",
+        expected === "identified" &&
+          ["approved", "declined", "cancelled"].includes(rec.state)
+          ? E.alreadyDecided
+          : E.requestExpired,
         `request is ${rec.state}`,
       );
     }
@@ -784,7 +813,7 @@ export class OobSignInService {
       service: { did: this.o.serviceDid, name: this.o.serviceName },
       origin: rec.origin,
       purpose: rec.purpose,
-      decisionDeadline: isoSeconds(new Date(rec.decisionDeadline!)),
+      decisionDeadline: Math.floor(rec.decisionDeadline! / 1000),
     };
   }
 
@@ -818,15 +847,15 @@ function mapVerification(e: unknown): OobError {
   if (e instanceof OobError) return e;
   if (e instanceof OobVerificationError) {
     if (e.reason === "key_unsupported")
-      return new OobError("keyUnsupported", "Ed25519 did:key only");
+      return new OobError(E.keyUnsupported, "Ed25519 did:key only");
     if (
       e.reason === "malformed" ||
       e.reason === "wrong_type" ||
       e.reason === "parent_thread_mismatch"
     ) {
-      return new OobError("malformedRequest", e.message);
+      return new OobError(E.malformedRequest, e.message);
     }
-    return new OobError("notAuthorized", "not authorized");
+    return new OobError(E.notAuthorized, "not authorized");
   }
   throw e;
 }

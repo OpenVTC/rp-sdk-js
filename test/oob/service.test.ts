@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  OOB_ERRORS as E,
   OOB_TYPES,
   OobError,
   type OobDocument,
@@ -67,7 +68,7 @@ const respond = (ka: TestKey, grant: OobDocument<unknown>) =>
 describe("OobSignInService", () => {
   it("runs the whole flow: request, claim, prove, respond, redeem", async () => {
     const p = await proved();
-    expect(p.claimDeadline).toMatch(/Z$/);
+    expect(Number.isInteger(p.claimDeadline)).toBe(true);
     expect(p.step1.payload.service).toEqual({
       did: p.service.did,
       name: "Example Community",
@@ -84,7 +85,7 @@ describe("OobSignInService", () => {
     // Before approval, redeem says pending and gives the number to K_b only.
     const pending = await p.svc.handle(await redeemDoc(p.kb, p.requestId));
     expect(pending.body.payload).toMatchObject({
-      code: "pending",
+      code: E.pending,
       details: { state: "identified", matchNumber: p.matchNumber },
     });
 
@@ -95,7 +96,7 @@ describe("OobSignInService", () => {
       step2: p.step2,
     });
     expect(await p.svc.respond(await respond(p.ka, grant))).toEqual({
-      status: "ok",
+      status: "approved",
     });
 
     const res = await p.svc.handle(await redeemDoc(p.kb, p.requestId));
@@ -111,7 +112,7 @@ describe("OobSignInService", () => {
 
     // Single use.
     expect(await code(p.svc.redeem(await redeemDoc(p.kb, p.requestId)))).toBe(
-      "requestExpired",
+      E.requestExpired,
     );
   });
 
@@ -127,7 +128,7 @@ describe("OobSignInService", () => {
           }),
         ),
       ),
-    ).toBe("purposeUnsupported");
+    ).toBe(E.purposeUnsupported);
     expect(
       await code(
         svc.request(
@@ -137,28 +138,28 @@ describe("OobSignInService", () => {
           }),
         ),
       ),
-    ).toBe("modeUnsupported");
+    ).toBe(E.modeUnsupported);
     const d = await requestDoc(kb);
     expect(
       await code(svc.request({ ...d, issuer: "did:web:example.org" })),
-    ).toBe("keyUnsupported");
+    ).toBe(E.keyUnsupported);
   });
 
   it("refuses a replayed document id", async () => {
     const { svc } = setup();
     const d = await requestDoc(didKey());
     await svc.request(d);
-    expect(await code(svc.request(d))).toBe("notAuthorized");
+    expect(await code(svc.request(d))).toBe(E.notAuthorized);
   });
 
   it("locks to the first claimant", async () => {
     const c = await claimed();
     expect(await code(c.svc.claim(await claimDoc(didKey(), c.requestId)))).toBe(
-      "alreadyClaimed",
+      E.alreadyClaimed,
     );
     expect(
       await code(c.svc.claim(await claimDoc(didKey(), "A".repeat(22)))),
-    ).toBe("requestNotFound");
+    ).toBe(E.requestNotFound);
   });
 
   it("expires an unclaimed request after the claim window", async () => {
@@ -167,7 +168,7 @@ describe("OobSignInService", () => {
     const o = await opened(env);
     now += 121_000;
     expect(await code(o.svc.claim(await claimDoc(didKey(), o.requestId)))).toBe(
-      "requestExpired",
+      E.requestExpired,
     );
     expect((await o.store.get(o.requestId))!.state).toBe("expired");
   });
@@ -178,7 +179,7 @@ describe("OobSignInService", () => {
     const c = await claimed(env);
     now += 121_000;
     expect(await code(c.svc.redeem(await redeemDoc(c.kb, c.requestId)))).toBe(
-      "requestExpired",
+      E.requestExpired,
     );
   });
 
@@ -193,7 +194,7 @@ describe("OobSignInService", () => {
         c.matchNumber,
       ),
     });
-    expect(await code(c.svc.prove(doc))).toBe("notClaimant");
+    expect(await code(c.svc.prove(doc))).toBe(E.notClaimant);
     expect((await c.store.get(c.requestId))!.state).toBe("claimed");
   });
 
@@ -208,7 +209,7 @@ describe("OobSignInService", () => {
         c.matchNumber,
       ),
     });
-    expect(await code(c.svc.prove(doc))).toBe("notAuthorized");
+    expect(await code(c.svc.prove(doc))).toBe(E.notAuthorized);
     expect(c.resolver.calls).not.toContain(c.mallory.did);
     expect((await c.store.get(c.requestId))!.state).toBe("declined");
   });
@@ -219,9 +220,9 @@ describe("OobSignInService", () => {
     const doc = await sign(OOB_TYPES.prove, c.ka, c.ka.signer, {
       identify: await identifyDoc(c.alice, c.requestId, c.ka.did, wrong),
     });
-    expect(await code(c.svc.prove(doc))).toBe("numberMismatch");
+    expect(await code(c.svc.prove(doc))).toBe(E.numberMismatch);
     expect(await code(c.svc.redeem(await redeemDoc(c.kb, c.requestId)))).toBe(
-      "declined",
+      E.declined,
     );
   });
 
@@ -235,7 +236,7 @@ describe("OobSignInService", () => {
     );
     identify.proof!.proofValue = "z" + "2".repeat(87);
     const doc = await sign(OOB_TYPES.prove, c.ka, c.ka.signer, { identify });
-    expect(await code(c.svc.prove(doc))).toBe("notAuthorized");
+    expect(await code(c.svc.prove(doc))).toBe(E.notAuthorized);
     expect((await c.store.get(c.requestId))!.state).toBe("declined");
   });
 
@@ -248,7 +249,7 @@ describe("OobSignInService", () => {
       step2: p.step2,
     });
     expect(await code(p.svc.respond(await respond(p.ka, grant)))).toBe(
-      "contextMismatch",
+      E.contextMismatch,
     );
     expect((await p.store.get(p.requestId))!.state).toBe("declined");
   });
@@ -262,7 +263,7 @@ describe("OobSignInService", () => {
       step2: { ...p.step2, id: "x" },
     });
     expect(await code(p.svc.respond(await respond(p.ka, grant)))).toBe(
-      "contextMismatch",
+      E.contextMismatch,
     );
   });
 
@@ -278,7 +279,7 @@ describe("OobSignInService", () => {
     await p.svc.respond(await respond(p.ka, grant));
     const r = await p.svc.handle(await redeemDoc(p.kb, p.requestId));
     expect(r.body.payload).toMatchObject({
-      code: "declined",
+      code: E.declined,
       details: { state: "declined" },
     });
   });
@@ -293,7 +294,7 @@ describe("OobSignInService", () => {
       step2: p.step2,
     });
     expect(await code(p.svc.respond(await respond(p.ka, grant)))).toBe(
-      "notAuthorized",
+      E.notAuthorized,
     );
   });
 
@@ -313,7 +314,7 @@ describe("OobSignInService", () => {
       step2: p.step2,
     });
     expect(await code(p.svc.respond(await respond(p.ka, again)))).toBe(
-      "alreadyDecided",
+      E.alreadyDecided,
     );
   });
 
@@ -321,7 +322,7 @@ describe("OobSignInService", () => {
     const o = await opened();
     expect(
       await code(o.svc.redeem(await redeemDoc(didKey(), o.requestId))),
-    ).toBe("notStarter");
+    ).toBe(E.notStarter);
   });
 
   it("redeem: pending before claim carries no number; one poll at a time", async () => {
@@ -329,11 +330,11 @@ describe("OobSignInService", () => {
     const o = await opened(env);
     const first = o.svc.handle(await redeemDoc(o.kb, o.requestId));
     expect(await code(o.svc.redeem(await redeemDoc(o.kb, o.requestId)))).toBe(
-      "rateLimited",
+      E.rateLimited,
     );
     const r = await first;
     expect(r.body.payload).toEqual({
-      code: "pending",
+      code: E.pending,
       message: "not decided yet",
       details: { state: "pending" },
     });
@@ -364,7 +365,7 @@ describe("OobSignInService", () => {
     );
     const r = await c.svc.handle(await redeemDoc(c.kb, c.requestId));
     expect(r.body.payload).toMatchObject({
-      code: "declined",
+      code: E.declined,
       details: { state: "cancelled" },
     });
     const stranger = didKey();
@@ -376,7 +377,7 @@ describe("OobSignInService", () => {
           }),
         ),
       ),
-    ).toBe("notAuthorized");
+    ).toBe(E.notAuthorized);
   });
 
   it("handle: answers unknown types with a trust-task-error", async () => {

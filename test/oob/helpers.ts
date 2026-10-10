@@ -150,10 +150,11 @@ export async function sign<P>(
     parentThreadId: extra.parentThreadId,
     now: extra.now,
   });
-  return signOobDocument(doc, signer, {
-    proofPurpose: extra.proofPurpose,
-    now: extra.now,
-  });
+  // did:key (starter and lock) documents sign for authentication.
+  const proofPurpose =
+    extra.proofPurpose ??
+    (issuer.did.startsWith("did:key:") ? "authentication" : "assertionMethod");
+  return signOobDocument(doc, signer, { proofPurpose, now: extra.now });
 }
 
 export const requestDoc = (kb: TestKey) =>
@@ -204,7 +205,7 @@ export async function grantDoc(
       approverKey: p.approverKey,
       origin: p.origin ?? ORIGIN,
       contextDigest: computeContextDigest(p.step2),
-      notAfter: new Date(Date.now() + 3600_000).toISOString(),
+      notAfter: Math.floor(Date.now() / 1000) + 3600,
     },
     { proofPurpose: "assertionMethod" },
   );

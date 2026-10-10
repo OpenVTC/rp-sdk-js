@@ -131,3 +131,42 @@ function ed25519KeyOf(vm: VerificationMethod): Uint8Array {
   }
   throw new Error(`${vm.id} is not an Ed25519 key`);
 }
+
+/** The DID-document service type for a Trust-Task HTTPS endpoint (C4, C9). */
+export const TRUST_TASK_HTTPS_SERVICE_TYPE = "TrustTaskHTTPS";
+/** The DID-document service type of a sign-in portal (C4, VTI-LNK-102). */
+export const SIGN_IN_PORTAL_SERVICE_TYPE = "SignInPortal";
+
+function serviceEndpointOf(doc: DidDocument, type: string): string | null {
+  // Matched on `type`, never on `id` (VTI-LNK-053).
+  for (const svc of doc.service ?? []) {
+    const types = Array.isArray(svc.type) ? svc.type : [svc.type];
+    if (!types.includes(type)) continue;
+    const ep = svc.serviceEndpoint;
+    if (typeof ep !== "string") continue;
+    let url: URL;
+    try {
+      url = new URL(ep);
+    } catch {
+      continue;
+    }
+    if (url.protocol !== "https:" || url.username || url.password) continue;
+    return ep;
+  }
+  return null;
+}
+
+/**
+ * The `serviceEndpoint` of the document's `TrustTaskHTTPS` service, exactly
+ * as published: the full URL documents are POSTed to. Never appends a path.
+ * Returns null when there is no usable `https` one.
+ */
+export function trustTaskEndpoint(doc: DidDocument): string | null {
+  return serviceEndpointOf(doc, TRUST_TASK_HTTPS_SERVICE_TYPE);
+}
+
+/** The origin of the document's `SignInPortal` service, or null. */
+export function signInPortalOrigin(doc: DidDocument): string | null {
+  const ep = serviceEndpointOf(doc, SIGN_IN_PORTAL_SERVICE_TYPE);
+  return ep ? new URL(ep).origin : null;
+}

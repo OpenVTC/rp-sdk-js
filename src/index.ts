@@ -112,6 +112,10 @@ export {
 export {
   DidKeyDocumentResolver,
   resolveRelationshipKey,
+  trustTaskEndpoint,
+  signInPortalOrigin,
+  TRUST_TASK_HTTPS_SERVICE_TYPE,
+  SIGN_IN_PORTAL_SERVICE_TYPE,
 } from "./oob/did-document.js";
 export type {
   DidDocument,

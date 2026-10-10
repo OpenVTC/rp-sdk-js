@@ -29,6 +29,7 @@ import {
   type GrantPayload,
   type IdentifyPayload,
   type OobDocument,
+  isMatchNumber,
 } from "./types.js";
 
 export type OobVerificationReason =
@@ -215,7 +216,9 @@ export function verifyDidKeyDocument<P>(
   const doc = checkEnvelope<P>(raw, type, common);
   const key = ed25519KeyFromDidKey(doc.issuer);
   if (!key) fail("key_unsupported", "issuer must be an Ed25519 did:key");
-  const vm = checkProofShape(doc, ["assertionMethod", "authentication"]);
+  // CONVENTIONS.md section 5 rule 4: starter and lock keys sign with
+  // `authentication`.
+  const vm = checkProofShape(doc, ["authentication"]);
   if (vm !== didKeyVerificationMethod(doc.issuer)) {
     fail("proof_invalid", `verificationMethod ${vm} is not the did:key's key`);
   }
@@ -309,7 +312,7 @@ export async function verifyOobIdentify(
   const keys = Object.keys(p).sort().join(",");
   if (
     keys !== "approverKey,enteredNumber,requestId" ||
-    typeof p.enteredNumber !== "string"
+    !isMatchNumber(p.enteredNumber)
   ) {
     fail(
       "malformed",
@@ -377,10 +380,10 @@ export async function verifyOobGrant(
   if (p.decision !== "approve" && p.decision !== "decline") {
     fail("malformed", "decision must be approve or decline");
   }
-  const notAfter =
-    typeof p.notAfter === "string" ? new Date(p.notAfter) : new Date(NaN);
-  if (!Number.isFinite(notAfter.getTime()))
-    fail("malformed", "missing or unparseable notAfter");
+  // Integer epoch seconds only (C9); RFC 3339 is refused.
+  if (!Number.isSafeInteger(p.notAfter) || p.notAfter < 0)
+    fail("malformed", "notAfter must be integer epoch seconds");
+  const notAfter = new Date(p.notAfter * 1000);
   if (typeof p.contextDigest !== "string")
     fail("malformed", "missing contextDigest");
   if (p.requestId !== params.requestId)
@@ -429,7 +432,6 @@ function decodeDigest(s: string): Uint8Array | null {
     let bytes: Uint8Array;
     if (s.startsWith("z")) bytes = base58.decode(s.slice(1));
     else if (s.startsWith("u")) bytes = base64urlnopad.decode(s.slice(1));
-    else if (/^[0-9a-f]{64}$/.test(s)) return hex.decode(s);
     else return null;
     if (bytes.length === 34 && bytes[0] === 0x12 && bytes[1] === 0x20)
       return bytes.slice(2);
@@ -441,8 +443,8 @@ function decodeDigest(s: string): Uint8Array | null {
 
 /**
  * Compare two context digests by their bytes. Accepts a multibase
- * (`z` base58btc or `u` base64url) sha2-256 multihash, or 64 lowercase hex
- * characters, because the encoding is not yet fixed by the trust-task spec.
+ * (`z` base58btc or `u` base64url) sha2-256 multihash, as the schema's
+ * `DigestMultibase` allows. Anything else, hex included, never matches.
  */
 export function contextDigestsEqual(a: string, b: string): boolean {
   const x = decodeDigest(a);

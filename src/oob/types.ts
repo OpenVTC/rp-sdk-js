@@ -60,14 +60,12 @@ export interface RequestPayload {
   mode: OobMode;
 }
 
-/**
- * `claimDeadline` is RFC 3339 here. The base design does not fix its
- * representation; the starter also accepts epoch seconds.
- */
+/** `claimDeadline` is integer epoch seconds, the unit of `_exp` (C9). */
 // TODO: replace with generated trust-tasks types
 export interface RequestResponse {
   requestId: string;
-  claimDeadline: string | number;
+  claimDeadline: number;
+  ext?: Record<string, unknown>;
 }
 
 // TODO: replace with generated trust-tasks types
@@ -81,7 +79,8 @@ export interface Step1Response {
   service: { did: string; name: string };
   origin: string;
   purpose: OobPurpose;
-  decisionDeadline: string;
+  /** Integer epoch seconds. */
+  decisionDeadline: number;
 }
 
 // TODO: replace with generated trust-tasks types
@@ -119,8 +118,10 @@ export interface GrantPayload {
   sessionKey: string;
   approverKey: string;
   origin: string;
+  /** Multibase (`z` or `u`) sha2-256 multihash. */
   contextDigest: string;
-  notAfter: string;
+  /** Integer epoch seconds. */
+  notAfter: number;
 }
 
 // TODO: replace with generated trust-tasks types
@@ -140,9 +141,26 @@ export interface RedeemPayload {
 // TODO: replace with generated trust-tasks types
 export interface RedeemResponse {
   subject: string;
-  displayName?: string;
-  notAfter: string;
+  displayName: string;
+  /** Integer epoch seconds. */
+  notAfter: number;
   amr: string[];
+  /**
+   * Service extensions under reverse-DNS namespaces. A bearer-token service
+   * (such as DID hosting, `com.affinidi.did-hosting`) returns its tokens to
+   * the starter here (C9).
+   */
+  ext?: Record<string, unknown>;
+}
+
+// TODO: replace with generated trust-tasks types
+export interface RespondResponse {
+  status: "approved" | "declined";
+}
+
+// TODO: replace with generated trust-tasks types
+export interface CancelResponse {
+  status: "cancelled";
 }
 
 // TODO: replace with generated trust-tasks types
@@ -161,25 +179,37 @@ export type OobRequestState =
   | "cancelled"
   | "expired";
 
-/** Machine-readable error codes used across the family. */
+/**
+ * Machine-readable error codes: `auth/oob:*` for the family, and
+ * `auth/oob/<task>:*` for codes one task declares (CONVENTIONS.md section 6).
+ * `malformedRequest` is the framework's own code.
+ */
 // TODO: replace with generated trust-tasks types
-export type OobErrorCode =
-  | "purposeUnsupported"
-  | "modeUnsupported"
-  | "keyUnsupported"
-  | "rateLimited"
-  | "requestNotFound"
-  | "requestExpired"
-  | "alreadyClaimed"
-  | "notClaimant"
-  | "numberMismatch"
-  | "notAuthorized"
-  | "alreadyDecided"
-  | "contextMismatch"
-  | "pending"
-  | "declined"
-  | "notStarter"
-  | "malformedRequest";
+export const OOB_ERRORS = {
+  keyUnsupported: "auth/oob:keyUnsupported",
+  rateLimited: "auth/oob:rateLimited",
+  requestNotFound: "auth/oob:requestNotFound",
+  requestExpired: "auth/oob:requestExpired",
+  notClaimant: "auth/oob:notClaimant",
+  notStarter: "auth/oob:notStarter",
+  notAuthorized: "auth/oob:notAuthorized",
+  alreadyDecided: "auth/oob:alreadyDecided",
+  purposeUnsupported: "auth/oob/request:purposeUnsupported",
+  modeUnsupported: "auth/oob/request:modeUnsupported",
+  alreadyClaimed: "auth/oob/claim:alreadyClaimed",
+  numberMismatch: "auth/oob/prove:numberMismatch",
+  contextMismatch: "auth/oob/respond:contextMismatch",
+  pending: "auth/oob/redeem:pending",
+  declined: "auth/oob/redeem:declined",
+  malformedRequest: "malformedRequest",
+} as const;
+
+export type OobErrorCode = (typeof OOB_ERRORS)[keyof typeof OOB_ERRORS];
+
+/** `^[0-9]{2}$`: `matchNumber` and `enteredNumber` (C9). */
+export function isMatchNumber(v: unknown): v is string {
+  return typeof v === "string" && /^[0-9]{2}$/.test(v);
+}
 
 /** The payload of a `trust-task-error` document. */
 export interface TrustTaskErrorPayload {

@@ -86,8 +86,8 @@ function waitFor(
   });
 }
 
-function harness(overrides = {}) {
-  const env = setup({ redeemHoldMs: 30, pollIntervalMs: 5 });
+function harness(overrides = {}, service: Parameters<typeof setup>[0] = {}) {
+  const env = setup({ redeemHoldMs: 30, pollIntervalMs: 5, ...service });
   const states: SignInState[] = [];
   const doc = new FakeDocument();
   const container = fakeEl("div");
@@ -135,7 +135,14 @@ async function wallet(
 
 describe("browser starter", () => {
   it("signs in end to end and deletes K_b on sign-out", async () => {
-    const h = harness();
+    const h = harness(
+      {},
+      {
+        redeemExt: async () => ({
+          "com.affinidi.did-hosting": { token: "bearer" },
+        }),
+      },
+    );
     await h.signIn.start();
     const waiting = (await waitFor(h.states, "waiting")) as Extract<
       SignInState,
@@ -183,6 +190,10 @@ describe("browser starter", () => {
     >;
     expect(confirm.subject).toBe(h.env.alice.did);
     expect(confirm.displayName).toBe("Alice");
+    expect(confirm.notAfter.getTime() % 1000).toBe(0);
+    expect(confirm.ext).toEqual({
+      "com.affinidi.did-hosting": { token: "bearer" },
+    });
     h.signIn.confirm();
     expect(h.signIn.state.status).toBe("signedIn");
 
