@@ -156,7 +156,9 @@ export interface VerifiedConfirmResponse {
 export async function verifyConfirmResponse(
   params: VerifyConfirmResponseParams,
 ): Promise<VerifiedConfirmResponse> {
-  const doc = params.document as TrustTaskDocument<Partial<ConfirmResponsePayload>>;
+  const doc = params.document as TrustTaskDocument<
+    Partial<ConfirmResponsePayload>
+  >;
   if (!doc || typeof doc !== "object" || doc.type !== CONFIRM_RESPONSE_TYPE) {
     throw new ConfirmVerificationError(
       "wrong_type",
@@ -171,24 +173,46 @@ export async function verifyConfirmResponse(
     typeof payload.challenge !== "string" ||
     (payload.decision !== "approved" && payload.decision !== "denied")
   ) {
-    throw new ConfirmVerificationError("malformed_payload", "missing subject/challenge/decision");
+    throw new ConfirmVerificationError(
+      "malformed_payload",
+      "missing subject/challenge/decision",
+    );
   }
-  if (payload.decision === "denied" && typeof payload.deniedReason !== "string") {
-    throw new ConfirmVerificationError("missing_denied_reason", "denied response must carry deniedReason");
+  if (
+    payload.decision === "denied" &&
+    typeof payload.deniedReason !== "string"
+  ) {
+    throw new ConfirmVerificationError(
+      "missing_denied_reason",
+      "denied response must carry deniedReason",
+    );
   }
 
   // The proof IS the consent record — verify it before trusting any field.
-  const signer = await verifyDataIntegrityProof(doc, params.resolver, "assertionMethod");
+  const signer = await verifyDataIntegrityProof(
+    doc,
+    params.resolver,
+    "assertionMethod",
+  );
 
   // subject === issuer === proof signer (SPEC confirm/response §Conformance).
   if (doc.issuer !== undefined && doc.issuer !== payload.subject) {
-    throw new ConfirmVerificationError("subject_mismatch", `issuer ${doc.issuer} != subject ${payload.subject}`);
+    throw new ConfirmVerificationError(
+      "subject_mismatch",
+      `issuer ${doc.issuer} != subject ${payload.subject}`,
+    );
   }
   if (signer !== payload.subject) {
-    throw new ConfirmVerificationError("subject_mismatch", `proof signer ${signer} != subject ${payload.subject}`);
+    throw new ConfirmVerificationError(
+      "subject_mismatch",
+      `proof signer ${signer} != subject ${payload.subject}`,
+    );
   }
   if (payload.subject !== params.subject) {
-    throw new ConfirmVerificationError("subject_mismatch", `subject ${payload.subject} != requested ${params.subject}`);
+    throw new ConfirmVerificationError(
+      "subject_mismatch",
+      `subject ${payload.subject} != requested ${params.subject}`,
+    );
   }
 
   // Same constant-time compare the SIOPv2 nonce check uses — the challenge is
@@ -278,18 +302,36 @@ export async function verifyDataIntegrityProof(
   if (!proof || typeof proof !== "object") {
     throw new ConfirmVerificationError("no_proof", "document has no proof");
   }
-  if (proof.type !== "DataIntegrityProof" || proof.cryptosuite !== "eddsa-jcs-2022") {
-    throw new ConfirmVerificationError("unsupported_suite", `${proof.type}/${proof.cryptosuite}`);
+  if (
+    proof.type !== "DataIntegrityProof" ||
+    proof.cryptosuite !== "eddsa-jcs-2022"
+  ) {
+    throw new ConfirmVerificationError(
+      "unsupported_suite",
+      `${proof.type}/${proof.cryptosuite}`,
+    );
   }
   if (expectedProofPurpose && proof.proofPurpose !== expectedProofPurpose) {
-    throw new ConfirmVerificationError("wrong_proof_purpose", `${proof.proofPurpose} != ${expectedProofPurpose}`);
+    throw new ConfirmVerificationError(
+      "wrong_proof_purpose",
+      `${proof.proofPurpose} != ${expectedProofPurpose}`,
+    );
   }
   const vm = proof.verificationMethod;
   if (typeof vm !== "string" || !vm.includes("#")) {
-    throw new ConfirmVerificationError("proof_invalid", "missing/invalid verificationMethod");
+    throw new ConfirmVerificationError(
+      "proof_invalid",
+      "missing/invalid verificationMethod",
+    );
   }
-  if (typeof proof.proofValue !== "string" || !proof.proofValue.startsWith("z")) {
-    throw new ConfirmVerificationError("proof_invalid", "proofValue must be multibase base58btc ('z')");
+  if (
+    typeof proof.proofValue !== "string" ||
+    !proof.proofValue.startsWith("z")
+  ) {
+    throw new ConfirmVerificationError(
+      "proof_invalid",
+      "proofValue must be multibase base58btc ('z')",
+    );
   }
   const controller = vm.slice(0, vm.indexOf("#"));
 
@@ -309,20 +351,35 @@ export async function verifyDataIntegrityProof(
   delete docCopy.proof;
 
   const toVerify = new Uint8Array(64);
-  toVerify.set(sha256(new TextEncoder().encode(canonicalizeBounded(proofConfig))), 0);
-  toVerify.set(sha256(new TextEncoder().encode(canonicalizeBounded(docCopy))), 32);
+  toVerify.set(
+    sha256(new TextEncoder().encode(canonicalizeBounded(proofConfig))),
+    0,
+  );
+  toVerify.set(
+    sha256(new TextEncoder().encode(canonicalizeBounded(docCopy))),
+    32,
+  );
 
   let sig: Uint8Array;
   try {
     sig = base58.decode(proof.proofValue.slice(1));
   } catch (e) {
-    throw new ConfirmVerificationError("proof_invalid", `bad base58btc proofValue: ${e instanceof Error ? e.message : String(e)}`);
+    throw new ConfirmVerificationError(
+      "proof_invalid",
+      `bad base58btc proofValue: ${e instanceof Error ? e.message : String(e)}`,
+    );
   }
   if (sig.length !== 64) {
-    throw new ConfirmVerificationError("proof_invalid", `signature must be 64 bytes, got ${sig.length}`);
+    throw new ConfirmVerificationError(
+      "proof_invalid",
+      `signature must be 64 bytes, got ${sig.length}`,
+    );
   }
   if (!ed25519.verify(sig, toVerify, publicKey)) {
-    throw new ConfirmVerificationError("proof_invalid", "Ed25519 signature verification failed");
+    throw new ConfirmVerificationError(
+      "proof_invalid",
+      "Ed25519 signature verification failed",
+    );
   }
   return controller;
 }
@@ -372,7 +429,9 @@ export interface BuildConfirmRequestParams {
  * RP's key); attach one with {@link signConfirmRequest} before sending, unless
  * you are relying solely on a mutually-authenticated transport.
  */
-export function buildConfirmRequest(params: BuildConfirmRequestParams): TrustTaskDocument<ConfirmRequestPayload> {
+export function buildConfirmRequest(
+  params: BuildConfirmRequestParams,
+): TrustTaskDocument<ConfirmRequestPayload> {
   const payload: ConfirmRequestPayload = {
     subject: params.subject,
     challenge: params.challenge,
@@ -427,7 +486,10 @@ export async function signConfirmRequest(
   toSign.set(sha256(new TextEncoder().encode(jcsCanonicalize(docCopy))), 32);
 
   const sig = await signer.sign(toSign);
-  if (sig.length !== 64) throw new Error(`signer returned ${sig.length}-byte signature, expected 64`);
+  if (sig.length !== 64)
+    throw new Error(
+      `signer returned ${sig.length}-byte signature, expected 64`,
+    );
   proofConfig.proofValue = "z" + base58.encode(sig);
   document.proof = proofConfig as unknown as DataIntegrityProof;
   return document;

@@ -25,7 +25,10 @@ const resolver = new KeyResolver();
 // implementations canonicalize + hash byte-identically. Regenerate with the
 // script in the PR description if the wire format changes.
 const fixture = JSON.parse(
-  readFileSync(fileURLToPath(new URL("./confirm-fixture.json", import.meta.url)), "utf8"),
+  readFileSync(
+    fileURLToPath(new URL("./confirm-fixture.json", import.meta.url)),
+    "utf8",
+  ),
 ) as {
   holderDid: string;
   rpDid: string;
@@ -111,16 +114,27 @@ describe("verifyConfirmResponse (cross-impl fixture from the wallet signer)", ()
     // deniedReason, so the malformed-payload guards pass) — the proof over the
     // original bytes must catch the change.
     const tampered = structuredClone(fixture.denied);
-    (tampered.payload as { decision: string; deniedReason?: string }).decision = "approved";
+    (tampered.payload as { decision: string; deniedReason?: string }).decision =
+      "approved";
     delete (tampered.payload as { deniedReason?: string }).deniedReason;
     await expect(
-      verifyConfirmResponse({ document: tampered, subject: fixture.holderDid, challenge: CHALLENGE, resolver }),
+      verifyConfirmResponse({
+        document: tampered,
+        subject: fixture.holderDid,
+        challenge: CHALLENGE,
+        resolver,
+      }),
     ).rejects.toMatchObject({ reason: "proof_invalid" });
   });
 
   it("rejects a challenge that does not match the bound challenge", async () => {
     await expect(
-      verifyConfirmResponse({ document: fixture.approved, subject: fixture.holderDid, challenge: "different", resolver }),
+      verifyConfirmResponse({
+        document: fixture.approved,
+        subject: fixture.holderDid,
+        challenge: "different",
+        resolver,
+      }),
     ).rejects.toBeInstanceOf(ConfirmVerificationError);
   });
 
@@ -149,7 +163,12 @@ describe("verifyConfirmResponse (cross-impl fixture from the wallet signer)", ()
 
   it("rejects a subject other than the addressed one", async () => {
     await expect(
-      verifyConfirmResponse({ document: fixture.approved, subject: "did:key:zSomeoneElse", challenge: CHALLENGE, resolver }),
+      verifyConfirmResponse({
+        document: fixture.approved,
+        subject: "did:key:zSomeoneElse",
+        challenge: CHALLENGE,
+        resolver,
+      }),
     ).rejects.toMatchObject({ reason: "subject_mismatch" });
   });
 
@@ -193,7 +212,10 @@ describe("verifyConfirmResponse (cross-impl fixture from the wallet signer)", ()
   it("rejects a non-confirm-response document", async () => {
     await expect(
       verifyConfirmResponse({
-        document: { type: "https://trusttasks.org/spec/other/1.0", payload: {} },
+        document: {
+          type: "https://trusttasks.org/spec/other/1.0",
+          payload: {},
+        },
         subject: fixture.holderDid,
         challenge: CHALLENGE,
         resolver,
@@ -363,7 +385,11 @@ describe("buildConfirmRequest + signConfirmRequest round-trip", () => {
     expect(doc.recipient).toBe(fixture.holderDid);
 
     await signConfirmRequest(doc, signer);
-    const signer2 = await verifyDataIntegrityProof(doc, resolver, "assertionMethod");
+    const signer2 = await verifyDataIntegrityProof(
+      doc,
+      resolver,
+      "assertionMethod",
+    );
     expect(signer2).toBe(did);
   });
 });
