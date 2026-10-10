@@ -34,10 +34,12 @@ https://link.trustoverip.org/t#_from=<service DID>&_id=<requestId>&_exp=<epoch s
 No UI framework. You draw the screens; the controller tells you which one.
 
 ```ts
-import { createSignIn } from "@openvtc/rp-sdk/browser";
+import { createSignIn, trustTaskEndpoint } from "@openvtc/rp-sdk/browser";
 
 const signIn = createSignIn({
-  endpoint: "/v1/trust-tasks",          // the service's trust-task endpoint
+  // The TrustTaskHTTPS serviceEndpoint, exactly as published; no path is
+  // appended. trustTaskEndpoint(didDocument) reads it from a resolved document.
+  endpoint: "https://members.example.org/v1/trust-tasks",
   serviceDid: "did:webvh:…:members.example.org",
   container: document.getElementById("sign-in-code")!, // the QR goes here
   // linkHost: "link.trustoverip.org", // default; never your own domain
@@ -45,10 +47,10 @@ const signIn = createSignIn({
     switch (state.status) {
       case "waiting":   /* code shown; state.codeVisible is false once the tab was hidden */ break;
       case "claimed":   /* "Approve on your phone. Your number is " + state.matchNumber, with Cancel */ break;
-      case "confirm":   /* "Continue as " + (state.displayName ?? state.subject) + "?" */ break;
+      case "confirm":   /* "Continue as " + state.displayName + "?"; state.ext carries a bearer service's tokens */ break;
       case "signedIn":  /* show who is signed in, with Sign out */ break;
       case "declined": case "cancelled": case "expired": /* offer a new code */ break;
-      case "error":     /* state.code, state.message */ break;
+      case "error":     /* state.code (e.g. "auth/oob:notAuthorized"), state.message */ break;
     }
   },
   onSignOut: () => fetch("/logout", { method: "POST" }),
@@ -119,6 +121,9 @@ const service = new OobSignInService({
   responseSigner: serviceAssertionKey,       // { verificationMethod, sign(bytes) }
   isActiveMember: (did) => acl.isActiveMember(did),
   displayName: (did) => directory.nameOf(did),
+  // Only for a service without cookie sessions (e.g. DID hosting): tokens for
+  // the starter, under your own namespace, in the redeem response's ext.
+  // redeemExt: async (session) => ({ "com.example.service": { accessToken } }),
 });
 
 app.post("/v1/trust-tasks", async (req, res) => {
@@ -155,7 +160,18 @@ refuse it if you have seen it before. Check the `identify` issuer against
 your ACL **before** calling `verifyOobIdentify`, so a non-member costs no
 DID resolution.
 
-The wire types are local for now (`// TODO: replace with generated
+Wire details follow contract C9 and the `auth/oob/*` schemas:
+`claimDeadline`, `decisionDeadline` and `notAfter` are integer epoch seconds;
+`contextDigest` is a `z` (or `u`) multibase sha2-256 multihash; `matchNumber`
+and `enteredNumber` are two-digit strings; starter and lock keys sign for
+`authentication`. Refusals are `trust-task-error` documents with prefixed
+codes (`OOB_ERRORS`): `auth/oob:*` for the family, `auth/oob/<task>:*` for one
+task, and the framework's `malformedRequest` (also for a claim whose
+`parentThreadId` is missing or differs from `payload.requestId`). `respond`
+answers `{status: "approved" | "declined"}` and `cancel` `{status: "cancelled"}`.
+
+The tests validate every emitted document against copies of those schemas
+(`test/fixtures/trust-tasks`). The wire types are local for now (`// TODO: replace with generated
 trust-tasks types`) until `dtgwg-trust-tasks-tf` publishes the `auth/oob/*`
 bindings.
 

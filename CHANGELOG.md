@@ -22,6 +22,14 @@
   - `DidDocumentResolver` / `DidKeyDocumentResolver` for checks that need
     a verification relationship, not just a key.
   - Wire types are local until the trust-tasks bindings are published.
+  - Wire format follows contract C9 and the `auth/oob/*` schemas: integer
+    epoch-second deadlines and `notAfter`, multibase `contextDigest`,
+    two-digit match numbers, prefixed error codes (`OOB_ERRORS`), and
+    `authentication` proofs from the starter and lock keys.
+  - `trustTaskEndpoint(didDocument)` returns the `TrustTaskHTTPS`
+    `serviceEndpoint` as published; `signInPortalOrigin(didDocument)`.
+  - A bearer-token service can return tokens to the starter in the redeem
+    response's `ext` (`redeemExt`); the starter exposes it as `state.ext`.
 - New dependency: `qrcode-generator` 2.0.4 (MIT, no dependencies), pinned,
   for the QR encoder. It sits behind the `QrEncoder` interface.
 
