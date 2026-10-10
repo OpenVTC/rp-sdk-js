@@ -32,7 +32,7 @@
     "build:check": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "tsc -p tsconfig.json --noEmit && prettier --check 'src/**/*.ts' 'test/**/*.ts'",
+    "lint": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server-check.json && prettier --check 'src/**/*.ts' 'test/**/*.ts'",
     "format": "prettier --write 'src/**/*.ts' 'test/**/*.ts'"
   },
   "keywords": [

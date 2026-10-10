@@ -9,7 +9,7 @@
  * import { createSignIn } from "@openvtc/rp-sdk/browser";
  *
  * const signIn = createSignIn({
- *   // The TrustTaskHTTPS serviceEndpoint, exactly as published.
+ *   // trustTaskEndpoint(didDocument): the TrustTaskHTTPS base + "/trust-tasks".
  *   endpoint: "https://members.example.org/v1/trust-tasks",
  *   serviceDid: "did:webvh:…:members.example.org",
  *   container: document.getElementById("code")!,
@@ -46,13 +46,14 @@ export {
   renderTriggerLinkHtml,
   createTriggerLinkElement,
   defaultQrEncoder,
-} from "./oob/qr.js";
+} from "./browser/qr.js";
 export type { QrEncoder, QrMatrix, QrRenderOptions } from "./oob/qr.js";
 export { buildOobDocument, signOobDocument } from "./oob/document.js";
 export {
   trustTaskEndpoint,
   signInPortalOrigin,
   TRUST_TASK_HTTPS_SERVICE_TYPE,
+  TRUST_TASK_HTTPS_PATH,
   SIGN_IN_PORTAL_SERVICE_TYPE,
 } from "./oob/did-document.js";
 export type { DidDocument } from "./oob/did-document.js";

@@ -98,12 +98,16 @@ export type { JcsCanonicalizeOptions, JcsLimit } from "./jcs.js";
 
 export * from "./oob/types.js";
 export * from "./oob/link.js";
-export {
-  renderQrSvg,
-  renderTriggerLinkHtml,
-  defaultQrEncoder,
+// QR rendering without a bundled encoder: pass `encoder`. The default
+// encoder (`qrcode-generator`) is only in `@openvtc/rp-sdk/browser`, so
+// this entry point loads no QR library and no DOM API.
+export { renderQrSvg, renderTriggerLinkHtml } from "./oob/qr.js";
+export type {
+  QrEncoder,
+  QrMatrix,
+  QrRenderOptions,
+  QrRenderOptionsWithEncoder,
 } from "./oob/qr.js";
-export type { QrEncoder, QrMatrix, QrRenderOptions } from "./oob/qr.js";
 export {
   ed25519DidKey,
   ed25519KeyFromDidKey,
@@ -115,6 +119,7 @@ export {
   trustTaskEndpoint,
   signInPortalOrigin,
   TRUST_TASK_HTTPS_SERVICE_TYPE,
+  TRUST_TASK_HTTPS_PATH,
   SIGN_IN_PORTAL_SERVICE_TYPE,
 } from "./oob/did-document.js";
 export type {

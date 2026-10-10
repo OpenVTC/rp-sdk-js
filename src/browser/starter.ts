@@ -20,7 +20,7 @@ import {
   DEFAULT_LINK_HOST,
   DEFAULT_LINK_PATH,
 } from "../oob/link.js";
-import { createTriggerLinkElement, type QrRenderOptions } from "../oob/qr.js";
+import type { QrRenderOptions } from "../oob/qr.js";
 import {
   OOB_ERRORS,
   OOB_TYPES,
@@ -36,6 +36,7 @@ import {
   type StarterKey,
   type StarterKeyStore,
 } from "./key.js";
+import { createTriggerLinkElement } from "./qr.js";
 
 /** Everything the page needs to draw. */
 export type SignInState =
@@ -74,9 +75,11 @@ export type SignInState =
 
 export interface SignInOptions {
   /**
-   * The service's `TrustTaskHTTPS` `serviceEndpoint`, exactly as published
-   * (e.g. `https://members.example.org/v1/trust-tasks`). Used as is; no path
-   * is appended. {@link trustTaskEndpoint} reads it from a DID document.
+   * The URL Trust-Task documents are POSTed to: the service's
+   * `TrustTaskHTTPS` base with `/trust-tasks` appended (e.g.
+   * `https://members.example.org/v1/trust-tasks` for the base
+   * `https://members.example.org/v1`). Used as is. {@link trustTaskEndpoint}
+   * builds it from a DID document.
    */
   endpoint: string;
   /** The service (VTC) DID: `recipient` of every document and `_from`. */

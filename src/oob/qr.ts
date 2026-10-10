@@ -3,11 +3,12 @@
  * chapter 07a rendering guidance): byte mode, level M, no logo, a quiet zone
  * of at least 4 modules, at least 4 CSS px per module, dark on light.
  *
- * The encoder sits behind {@link QrEncoder} so it can be swapped. The default
- * uses `qrcode-generator` (MIT, zero dependencies).
+ * This module has no third-party dependency and touches no DOM global: the
+ * encoder is passed in through {@link QrEncoder}. The main entry point
+ * re-exports these functions with `encoder` required, so importing the
+ * server side never loads a QR library. `@openvtc/rp-sdk/browser` wraps them
+ * with a default encoder (`qrcode-generator`, see `../browser/qr.ts`).
  */
-
-import qrcode from "qrcode-generator";
 
 import { TRIGGER_LINK_MAX_BYTES, TriggerLinkError } from "./link.js";
 
@@ -20,15 +21,6 @@ export interface QrMatrix {
 /** Encodes ASCII text in byte mode at error-correction level M. */
 export type QrEncoder = (text: string) => QrMatrix;
 
-/** The default encoder: `qrcode-generator`, automatic version, level M. */
-export const defaultQrEncoder: QrEncoder = (text) => {
-  const qr = qrcode(0, "M");
-  qr.addData(text, "Byte");
-  qr.make();
-  const size = qr.getModuleCount();
-  return { size, isDark: (r, c) => qr.isDark(r, c) };
-};
-
 export interface QrRenderOptions {
   /** CSS px per module. Minimum and default 4. */
   moduleSize?: number;
@@ -40,11 +32,20 @@ export interface QrRenderOptions {
   light?: string;
   /** Accessible label. Default "Sign-in code". */
   label?: string;
-  /** Replace the encoder (tests, or a different library). */
+  /**
+   * The QR encoder. Required when rendering through the main entry point;
+   * `@openvtc/rp-sdk/browser` defaults it to `qrcode-generator`.
+   */
   encoder?: QrEncoder;
 }
 
-interface ResolvedQr {
+/** {@link QrRenderOptions} with the encoder supplied. */
+export type QrRenderOptionsWithEncoder = QrRenderOptions & {
+  encoder: QrEncoder;
+};
+
+/** @internal The rendered geometry, shared with the browser DOM renderer. */
+export interface ResolvedQr {
   matrix: QrMatrix;
   moduleSize: number;
   quietZone: number;
@@ -57,7 +58,8 @@ interface ResolvedQr {
 
 const COLOUR = /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]+)$/;
 
-function resolve(text: string, opts: QrRenderOptions): ResolvedQr {
+/** @internal Validate the input and lay out the modules. */
+export function resolveQr(text: string, opts: QrRenderOptions): ResolvedQr {
   if (!/^[\x21-\x7e]*$/.test(text)) {
     throw new TriggerLinkError("non-ascii", "a QR payload must be ASCII");
   }
@@ -74,7 +76,12 @@ function resolve(text: string, opts: QrRenderOptions): ResolvedQr {
   if (!COLOUR.test(dark) || !COLOUR.test(light)) {
     throw new Error("QR colours must be hex or named colours");
   }
-  const matrix = (opts.encoder ?? defaultQrEncoder)(text);
+  if (typeof opts.encoder !== "function") {
+    throw new TypeError(
+      "no QR encoder: pass `encoder`, or render through @openvtc/rp-sdk/browser",
+    );
+  }
+  const matrix = opts.encoder(text);
   // One path of 1x1 squares in module units; the viewBox scales it.
   let path = "";
   for (let r = 0; r < matrix.size; r++) {
@@ -104,8 +111,11 @@ function escapeAttr(s: string): string {
 }
 
 /** The QR code as an SVG string, not wrapped in a link. */
-export function renderQrSvg(text: string, opts: QrRenderOptions = {}): string {
-  const q = resolve(text, opts);
+export function renderQrSvg(
+  text: string,
+  opts: QrRenderOptionsWithEncoder,
+): string {
+  const q = resolveQr(text, opts);
   const units = q.matrix.size + 2 * q.quietZone;
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${escapeAttr(q.label)}"` +
@@ -122,47 +132,10 @@ export function renderQrSvg(text: string, opts: QrRenderOptions = {}): string {
  */
 export function renderTriggerLinkHtml(
   link: string,
-  opts: QrRenderOptions = {},
+  opts: QrRenderOptionsWithEncoder,
 ): string {
   return (
     `<a href="${escapeAttr(link)}" rel="noreferrer" referrerpolicy="no-referrer">` +
     `${renderQrSvg(link, opts)}</a>`
   );
-}
-
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-/**
- * The QR code wrapped in `<a href="link">`, as DOM nodes built with
- * `createElementNS` (no `innerHTML`, so it works under Trusted Types).
- */
-export function createTriggerLinkElement(
-  doc: Document,
-  link: string,
-  opts: QrRenderOptions = {},
-): HTMLAnchorElement {
-  const q = resolve(link, opts);
-  const units = String(q.matrix.size + 2 * q.quietZone);
-  const a = doc.createElement("a");
-  a.setAttribute("href", link);
-  a.setAttribute("rel", "noreferrer");
-  a.setAttribute("referrerpolicy", "no-referrer");
-  const svg = doc.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", q.label);
-  svg.setAttribute("width", String(q.pixels));
-  svg.setAttribute("height", String(q.pixels));
-  svg.setAttribute("viewBox", `0 0 ${units} ${units}`);
-  svg.setAttribute("shape-rendering", "crispEdges");
-  const rect = doc.createElementNS(SVG_NS, "rect");
-  rect.setAttribute("width", units);
-  rect.setAttribute("height", units);
-  rect.setAttribute("fill", q.light);
-  const path = doc.createElementNS(SVG_NS, "path");
-  path.setAttribute("d", q.path);
-  path.setAttribute("fill", q.dark);
-  svg.appendChild(rect);
-  svg.appendChild(path);
-  a.appendChild(svg);
-  return a;
 }
