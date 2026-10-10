@@ -1,9 +1,15 @@
 /**
  * @openvtc/rp-sdk
  *
- * Server-side SDK for Relying Parties consuming SIOPv2
- * id_tokens from the OpenVTC browser plugin
- * (`window.vtaWallet.login`).
+ * SDK for Relying Parties. Its main job is wallet sign-in with a
+ * trigger link (`auth/oob/*`): the browser starter lives in
+ * `@openvtc/rp-sdk/browser`, and this entry point carries the
+ * server-side verification helpers and a reference state machine
+ * (`OobSignInService`).
+ *
+ * **Legacy (deprecated):** SIOPv2 `id_token` verification for the
+ * OpenVTC browser plugin's `window.vtaWallet.login`. It still works;
+ * new sites should use the `auth/oob` flow.
  *
  * **Why this exists**: the browser-plugin demo accepts whatever
  * the wallet POSTs without verifying the id_token signature, and
@@ -86,3 +92,69 @@ export {
   JCS_MAX_BYTES,
 } from "./jcs.js";
 export type { JcsCanonicalizeOptions, JcsLimit } from "./jcs.js";
+
+// ---- Wallet sign-in with a trigger link (`auth/oob/*`), server side ----
+// The browser starter lives in `@openvtc/rp-sdk/browser`.
+
+export * from "./oob/types.js";
+export * from "./oob/link.js";
+export {
+  renderQrSvg,
+  renderTriggerLinkHtml,
+  defaultQrEncoder,
+} from "./oob/qr.js";
+export type { QrEncoder, QrMatrix, QrRenderOptions } from "./oob/qr.js";
+export {
+  ed25519DidKey,
+  ed25519KeyFromDidKey,
+  didKeyVerificationMethod,
+} from "./oob/did-key.js";
+export {
+  DidKeyDocumentResolver,
+  resolveRelationshipKey,
+} from "./oob/did-document.js";
+export type {
+  DidDocument,
+  DidDocumentResolver,
+  VerificationMethod,
+  VerificationRelationship,
+} from "./oob/did-document.js";
+export {
+  buildOobDocument,
+  signOobDocument,
+  CREATED_BACKDATE_MS,
+} from "./oob/document.js";
+export type { BuildOobDocumentParams } from "./oob/document.js";
+export {
+  OobVerificationError,
+  verifyDidKeyDocument,
+  verifyOobClaim,
+  verifyOobIdentify,
+  verifyOobGrant,
+  computeContextDigest,
+  contextDigestsEqual,
+} from "./oob/verify.js";
+export type {
+  OobVerificationReason,
+  OobVerifyCommon,
+  VerifiedOobDocument,
+  VerifiedClaim,
+  VerifiedGrant,
+  VerifyIdentifyParams,
+  VerifyGrantParams,
+} from "./oob/verify.js";
+export {
+  OobSignInService,
+  MemoryOobRequestStore,
+  OobError,
+} from "./oob/service.js";
+export type {
+  OobRequestRecord,
+  OobRequestStore,
+  OobConnection,
+  OobSession,
+  OobSignInServiceOptions,
+  OobHandleResult,
+} from "./oob/service.js";
+export { attachEddsaJcsProof, eddsaJcsHashInput, isoSeconds } from "./proof.js";
+export type { EddsaJcsSigner } from "./proof.js";
