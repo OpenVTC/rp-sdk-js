@@ -156,13 +156,24 @@ function serviceEndpointOf(doc: DidDocument, type: string): string | null {
   return null;
 }
 
+/** The path a client appends to a `TrustTaskHTTPS` base (HTTPS binding 0.2 §6). */
+export const TRUST_TASK_HTTPS_PATH = "/trust-tasks";
+
 /**
- * The `serviceEndpoint` of the document's `TrustTaskHTTPS` service, exactly
- * as published: the full URL documents are POSTed to. Never appends a path.
- * Returns null when there is no usable `https` one.
+ * The URL to POST Trust-Task documents to, from the document's
+ * `TrustTaskHTTPS` service. The published `serviceEndpoint` is a base URL
+ * (VTC `…/v1`, DID hosting `…/api`); this returns it with one trailing
+ * slash removed and `/trust-tasks` appended (HTTPS binding 0.2 §6), so
+ * `https://members.example.org/v1` gives
+ * `https://members.example.org/v1/trust-tasks`. Returns null when there is
+ * no usable `https` one.
  */
 export function trustTaskEndpoint(doc: DidDocument): string | null {
-  return serviceEndpointOf(doc, TRUST_TASK_HTTPS_SERVICE_TYPE);
+  const base = serviceEndpointOf(doc, TRUST_TASK_HTTPS_SERVICE_TYPE);
+  if (base === null) return null;
+  return (
+    (base.endsWith("/") ? base.slice(0, -1) : base) + TRUST_TASK_HTTPS_PATH
+  );
 }
 
 /** The origin of the document's `SignInPortal` service, or null. */

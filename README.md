@@ -37,8 +37,8 @@ No UI framework. You draw the screens; the controller tells you which one.
 import { createSignIn, trustTaskEndpoint } from "@openvtc/rp-sdk/browser";
 
 const signIn = createSignIn({
-  // The TrustTaskHTTPS serviceEndpoint, exactly as published; no path is
-  // appended. trustTaskEndpoint(didDocument) reads it from a resolved document.
+  // The POST URL: the TrustTaskHTTPS serviceEndpoint (a base, e.g. …/v1)
+  // plus "/trust-tasks". trustTaskEndpoint(didDocument) builds it.
   endpoint: "https://members.example.org/v1/trust-tasks",
   serviceDid: "did:webvh:…:members.example.org",
   container: document.getElementById("sign-in-code")!, // the QR goes here

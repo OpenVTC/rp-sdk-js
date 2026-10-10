@@ -346,7 +346,7 @@ describe("DID-document service helpers", () => {
       {
         id: `${SERVICE_DID}#tt`,
         type: "TrustTaskHTTPS",
-        serviceEndpoint: "https://members.example.org/v1/trust-tasks",
+        serviceEndpoint: "https://members.example.org/v1",
       },
       {
         id: `${SERVICE_DID}#sign-in-portal`,
@@ -356,7 +356,7 @@ describe("DID-document service helpers", () => {
     ],
   };
 
-  it("returns the TrustTaskHTTPS endpoint exactly as published", () => {
+  it("appends /trust-tasks to the published TrustTaskHTTPS base", () => {
     expect(trustTaskEndpoint(doc)).toBe(
       "https://members.example.org/v1/trust-tasks",
     );
@@ -367,7 +367,20 @@ describe("DID-document service helpers", () => {
           {
             id: "#a",
             type: ["TrustTaskHTTPS"],
-            serviceEndpoint: "https://h.example/api/trust-tasks",
+            serviceEndpoint: "https://h.example/api",
+          },
+        ],
+      }),
+    ).toBe("https://h.example/api/trust-tasks");
+    // One trailing slash on the base is dropped, not doubled.
+    expect(
+      trustTaskEndpoint({
+        id: "did:x:y",
+        service: [
+          {
+            id: "#a",
+            type: "TrustTaskHTTPS",
+            serviceEndpoint: "https://h.example/api/",
           },
         ],
       }),
