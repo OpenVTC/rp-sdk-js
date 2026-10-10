@@ -26,18 +26,27 @@
     epoch-second deadlines and `notAfter`, multibase `contextDigest`,
     two-digit match numbers, prefixed error codes (`OOB_ERRORS`), and
     `authentication` proofs from the starter and lock keys.
-  - `trustTaskEndpoint(didDocument)` returns the `TrustTaskHTTPS`
-    `serviceEndpoint` as published; `signInPortalOrigin(didDocument)`.
+  - `trustTaskEndpoint(didDocument)` returns the POST URL for the
+    `TrustTaskHTTPS` service: its `serviceEndpoint` (a base URL, such as
+    `…/v1` or `…/api`) with one trailing slash removed and `/trust-tasks`
+    appended (HTTPS binding 0.2 §6). `signInPortalOrigin(didDocument)`.
   - A bearer-token service can return tokens to the starter in the redeem
     response's `ext` (`redeemExt`); the starter exposes it as `state.ext`.
+  - QR rendering: `renderQrSvg` and `renderTriggerLinkHtml`. From the main
+    entry point they take a required `encoder` (`QrEncoder`); from
+    `@openvtc/rp-sdk/browser` the encoder defaults to `defaultQrEncoder`,
+    and `createTriggerLinkElement` builds DOM nodes.
 - New dependency: `qrcode-generator` 2.0.4 (MIT, no dependencies), pinned,
-  for the QR encoder. It sits behind the `QrEncoder` interface.
+  for the default QR encoder. It sits behind the `QrEncoder` interface and
+  is loaded only by `@openvtc/rp-sdk/browser`: importing the main entry
+  point loads no QR library and uses no DOM API.
 
 ### Deprecated
 
-- `verifyIdToken` and `establishSession` (SIOPv2). They keep working;
-  removal will be scheduled later.
-
+- The SIOPv2 helpers, in JSDoc only: `verifyIdToken`,
+  `IdTokenVerificationError`, `VerifyIdTokenParams`, `VerifiedIdToken`,
+  `IdTokenVerificationReason` and `establishSession`. Their names,
+  signatures and behaviour are unchanged; removal will be scheduled later.
 
 ### Security
 
