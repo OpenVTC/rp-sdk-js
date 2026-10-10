@@ -18,11 +18,11 @@
  */
 
 import { ed25519 } from "@noble/curves/ed25519.js";
-import { sha256 } from "@noble/hashes/sha2.js";
 import { base58 } from "@scure/base";
 
 import type { DidResolver } from "./did-resolver.js";
-import { jcsCanonicalize, JcsLimitExceededError } from "./jcs.js";
+import { JcsLimitExceededError } from "./jcs.js";
+import { eddsaJcsHashInput } from "./proof.js";
 import { constantTimeEqual } from "./verify-id-token.js";
 
 export const CONFIRM_REQUEST_TYPE =
@@ -345,20 +345,18 @@ export async function verifyDataIntegrityProof(
     );
   }
 
-  const proofConfig: Record<string, unknown> = { ...proof };
-  delete proofConfig.proofValue;
-  const docCopy: Record<string, unknown> = { ...document };
-  delete docCopy.proof;
-
-  const toVerify = new Uint8Array(64);
-  toVerify.set(
-    sha256(new TextEncoder().encode(canonicalizeBounded(proofConfig))),
-    0,
-  );
-  toVerify.set(
-    sha256(new TextEncoder().encode(canonicalizeBounded(docCopy))),
-    32,
-  );
+  let toVerify: Uint8Array;
+  try {
+    toVerify = eddsaJcsHashInput(
+      document as unknown as Record<string, unknown>,
+      proof as unknown as Record<string, unknown>,
+    );
+  } catch (e) {
+    if (e instanceof JcsLimitExceededError) {
+      throw new ConfirmVerificationError("document_too_complex", e.message);
+    }
+    throw e;
+  }
 
   let sig: Uint8Array;
   try {
@@ -382,24 +380,6 @@ export async function verifyDataIntegrityProof(
     );
   }
   return controller;
-}
-
-/**
- * Canonicalize an untrusted document for the proof hash. `jcsCanonicalize`
- * bounds nesting depth and canonical size, so a hostile `confirm/response`
- * cannot exhaust the call stack (an untyped `RangeError`) or memory inside
- * verification; re-raise that as a typed `ConfirmVerificationError` so callers
- * that catch verification failures do not have to special-case it.
- */
-function canonicalizeBounded(value: unknown): string {
-  try {
-    return jcsCanonicalize(value);
-  } catch (e) {
-    if (e instanceof JcsLimitExceededError) {
-      throw new ConfirmVerificationError("document_too_complex", e.message);
-    }
-    throw e;
-  }
 }
 
 export interface BuildConfirmRequestParams {
@@ -478,12 +458,10 @@ export async function signConfirmRequest(
     created: signer.created ?? new Date().toISOString(),
     proofPurpose,
   };
-  const docCopy: Record<string, unknown> = { ...document };
-  delete docCopy.proof;
-
-  const toSign = new Uint8Array(64);
-  toSign.set(sha256(new TextEncoder().encode(jcsCanonicalize(proofConfig))), 0);
-  toSign.set(sha256(new TextEncoder().encode(jcsCanonicalize(docCopy))), 32);
+  const toSign = eddsaJcsHashInput(
+    document as unknown as Record<string, unknown>,
+    proofConfig,
+  );
 
   const sig = await signer.sign(toSign);
   if (sig.length !== 64)
