@@ -118,6 +118,14 @@ export type IdTokenVerificationReason =
  * the typed `reason` is intended to be surfaced into the RP's
  * audit log so operators can distinguish a misconfigured
  * `audience` from a forged token.
+ *
+ * @deprecated Legacy SIOPv2 sign-in, kept for older wallets. New
+ * sites should offer wallet sign-in with a trigger link
+ * (`auth/oob/*`): `@openvtc/rp-sdk/browser` on the page and
+ * `OobSignInService` or the `verifyOob*` helpers on the
+ * server. Put this path behind an "Using an older wallet?" link.
+ * It still works and is not being removed yet; a removal date will
+ * be announced.
  */
 export async function verifyIdToken(
   params: VerifyIdTokenParams,

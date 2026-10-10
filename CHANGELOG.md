@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Added
+
+- **Wallet sign-in with a trigger link (`auth/oob/*`).**
+  - New entry point `@openvtc/rp-sdk/browser`: `createSignIn` generates a
+    non-extractable WebCrypto Ed25519 key `K_b`, sends
+    `auth/oob/request`, builds the trigger link (ASCII only, at most 251
+    bytes, link host never on the page's domain), renders it as a
+    clickable SVG QR code at level M, hides it on `visibilitychange`, and
+    long-polls `auth/oob/redeem` with a fresh signed document each time.
+    States: waiting, claimed (with the number), confirm, signed in,
+    declined, cancelled, expired. `cancel`, `notMe` and `signOut` (which
+    deletes `K_b`).
+  - Server side: `verifyOobClaim`, `verifyOobIdentify` (against
+    `authentication`), `verifyOobGrant` (against `assertionMethod`),
+    `verifyDidKeyDocument`, `computeContextDigest`, and
+    `OobSignInService`, a reference state machine over a pluggable
+    `OobRequestStore`.
+  - `DidDocumentResolver` / `DidKeyDocumentResolver` for checks that need
+    a verification relationship, not just a key.
+  - Wire types are local until the trust-tasks bindings are published.
+- New dependency: `qrcode-generator` 2.0.4 (MIT, no dependencies), pinned,
+  for the QR encoder. It sits behind the `QrEncoder` interface.
+
+### Deprecated
+
+- `verifyIdToken` and `establishSession` (SIOPv2). They keep working;
+  removal will be scheduled later.
+
+
 ### Security
 
 - **`jcsCanonicalize` now bounds its input.** Canonicalization
