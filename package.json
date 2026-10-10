@@ -1,7 +1,7 @@
 {
   "name": "@openvtc/rp-sdk",
   "version": "0.2.0",
-  "description": "Server-side SDK for Relying Parties consuming SIOPv2 id_tokens from the OpenVTC browser plugin",
+  "description": "SDK for Relying Parties: wallet sign-in with a trigger link (auth/oob/*), browser starter and server helpers; legacy SIOPv2 id_token verification",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -14,6 +14,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js"
     }
   },
   "files": [
@@ -28,16 +32,18 @@
     "build:check": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "tsc -p tsconfig.json --noEmit && prettier --check 'src/**/*.ts' 'test/**/*.ts'",
+    "lint": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server-check.json && prettier --check 'src/**/*.ts' 'test/**/*.ts'",
     "format": "prettier --write 'src/**/*.ts' 'test/**/*.ts'"
   },
   "keywords": [
     "openvtc",
-    "siopv2",
+    "trust-tasks",
+    "trigger-link",
     "did",
     "rp",
     "relying-party",
-    "self-sovereign-identity"
+    "self-sovereign-identity",
+    "siopv2"
   ],
   "engines": {
     "node": ">=18.0.0"
@@ -45,7 +51,8 @@
   "dependencies": {
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.2.0",
-    "@scure/base": "^2.2.0"
+    "@scure/base": "^2.2.0",
+    "qrcode-generator": "2.0.4"
   },
   "devDependencies": {
     "@types/node": "^25.9.2",

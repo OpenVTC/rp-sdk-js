@@ -2,6 +2,52 @@
 
 ## Unreleased
 
+### Added
+
+- **Wallet sign-in with a trigger link (`auth/oob/*`).**
+  - New entry point `@openvtc/rp-sdk/browser`: `createSignIn` generates a
+    non-extractable WebCrypto Ed25519 key `K_b`, sends
+    `auth/oob/request`, builds the trigger link (ASCII only, at most 251
+    bytes, link host never on the page's domain), renders it as a
+    clickable SVG QR code at level M, hides it on `visibilitychange`, and
+    long-polls `auth/oob/redeem` with a fresh signed document each time.
+    States: waiting, claimed (with the number), confirm, signed in,
+    declined, cancelled, expired. `cancel`, `notMe` and `signOut` (which
+    deletes `K_b`).
+  - Server side: `verifyOobClaim`, `verifyOobIdentify` (against
+    `authentication`), `verifyOobGrant` (against `assertionMethod`),
+    `verifyDidKeyDocument`, `computeContextDigest`, and
+    `OobSignInService`, a reference state machine over a pluggable
+    `OobRequestStore`.
+  - `DidDocumentResolver` / `DidKeyDocumentResolver` for checks that need
+    a verification relationship, not just a key.
+  - Wire types are local until the trust-tasks bindings are published.
+  - Wire format follows contract C9 and the `auth/oob/*` schemas: integer
+    epoch-second deadlines and `notAfter`, multibase `contextDigest`,
+    two-digit match numbers, prefixed error codes (`OOB_ERRORS`), and
+    `authentication` proofs from the starter and lock keys.
+  - `trustTaskEndpoint(didDocument)` returns the POST URL for the
+    `TrustTaskHTTPS` service: its `serviceEndpoint` (a base URL, such as
+    `…/v1` or `…/api`) with one trailing slash removed and `/trust-tasks`
+    appended (HTTPS binding 0.2 §6). `signInPortalOrigin(didDocument)`.
+  - A bearer-token service can return tokens to the starter in the redeem
+    response's `ext` (`redeemExt`); the starter exposes it as `state.ext`.
+  - QR rendering: `renderQrSvg` and `renderTriggerLinkHtml`. From the main
+    entry point they take a required `encoder` (`QrEncoder`); from
+    `@openvtc/rp-sdk/browser` the encoder defaults to `defaultQrEncoder`,
+    and `createTriggerLinkElement` builds DOM nodes.
+- New dependency: `qrcode-generator` 2.0.4 (MIT, no dependencies), pinned,
+  for the default QR encoder. It sits behind the `QrEncoder` interface and
+  is loaded only by `@openvtc/rp-sdk/browser`: importing the main entry
+  point loads no QR library and uses no DOM API.
+
+### Deprecated
+
+- The SIOPv2 helpers, in JSDoc only: `verifyIdToken`,
+  `IdTokenVerificationError`, `VerifyIdTokenParams`, `VerifiedIdToken`,
+  `IdTokenVerificationReason` and `establishSession`. Their names,
+  signatures and behaviour are unchanged; removal will be scheduled later.
+
 ### Security
 
 - **`jcsCanonicalize` now bounds its input.** Canonicalization

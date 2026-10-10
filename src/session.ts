@@ -115,6 +115,10 @@ export function buildSessionCookie(
  * versions may take on more (CSRF token issuance, audit-log
  * emission, etc.) so RPs should call this rather than reaching
  * for `buildSessionCookie` directly.
+ *
+ * @deprecated Part of the legacy SIOPv2 path (see `verifyIdToken`).
+ * For `auth/oob` sign-in, build the cookie from the redeem's
+ * `OobSession` with {@link buildSessionCookie}.
  */
 export function establishSession(
   verified: VerifiedIdToken,

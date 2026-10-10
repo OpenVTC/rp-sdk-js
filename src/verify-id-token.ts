@@ -43,6 +43,7 @@ import type { DidResolver } from "./did-resolver.js";
 // drift between an honest wallet and the RP.
 const DEFAULT_CLOCK_SKEW_SECS = 60;
 
+/** @deprecated Legacy SIOPv2 sign-in; see {@link verifyIdToken}. */
 export interface VerifyIdTokenParams {
   /** Compact EdDSA JWS as emitted by `window.vtaWallet.login`. */
   idToken: string;
@@ -67,6 +68,7 @@ export interface VerifyIdTokenParams {
   clockSkewSecs?: number;
 }
 
+/** @deprecated Legacy SIOPv2 sign-in; see {@link verifyIdToken}. */
 export interface VerifiedIdToken {
   /** The holder DID (`iss === sub`). Bind your session to this. */
   subject: string;
@@ -82,6 +84,7 @@ export interface VerifiedIdToken {
   extra: Record<string, unknown>;
 }
 
+/** @deprecated Legacy SIOPv2 sign-in; see {@link verifyIdToken}. */
 export class IdTokenVerificationError extends Error {
   constructor(
     message: string,
@@ -92,6 +95,7 @@ export class IdTokenVerificationError extends Error {
   }
 }
 
+/** @deprecated Legacy SIOPv2 sign-in; see {@link verifyIdToken}. */
 export type IdTokenVerificationReason =
   | "malformed"
   | "wrong_algorithm"
@@ -118,6 +122,14 @@ export type IdTokenVerificationReason =
  * the typed `reason` is intended to be surfaced into the RP's
  * audit log so operators can distinguish a misconfigured
  * `audience` from a forged token.
+ *
+ * @deprecated Legacy SIOPv2 sign-in, kept for older wallets. New
+ * sites should offer wallet sign-in with a trigger link
+ * (`auth/oob/*`): `@openvtc/rp-sdk/browser` on the page and
+ * `OobSignInService` or the `verifyOob*` helpers on the
+ * server. Put this path behind an "Using an older wallet?" link.
+ * It still works and is not being removed yet; a removal date will
+ * be announced.
  */
 export async function verifyIdToken(
   params: VerifyIdTokenParams,
