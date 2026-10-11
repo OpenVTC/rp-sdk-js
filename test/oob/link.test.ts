@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildTriggerLink,
   encodeFromParam,
+  isHostNamedServiceContact,
   isValidHandle,
   TRIGGER_LINK_MAX_BYTES,
   TriggerLinkError,
@@ -190,6 +191,35 @@ describe("buildTriggerLink", () => {
       ),
     ).toBe("bad-from");
     expect(reason(() => buildTriggerLink({ ...p, from: "" }))).toBe("bad-from");
+  });
+
+  it("accepts only host-named service contacts (VTI-LNK-102)", () => {
+    const p = { requestId: ID, exp: EXP };
+    for (const from of [FROM, "did:web:members.example.org"]) {
+      expect(isHostNamedServiceContact(from)).toBe(true);
+      expect(buildTriggerLink({ ...p, from })).toContain(`_from=${from}&`);
+    }
+    for (const from of [
+      // did:peer numalgo 0
+      "did:peer:0z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
+      // did:peer numalgo 2
+      "did:peer:2.Vz6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK" +
+        ".SeyJ0IjoiZG0iLCJzIjoiaHR0cHM6Ly9leGFtcGxlLm9yZyJ9",
+      "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
+      "did:ion:EiClkZMDxPKqC9c-umQfTkR8vvZ9JPhl_xLDI9Nfk38w5w",
+      "did:constructor:x",
+    ]) {
+      expect(isHostNamedServiceContact(from)).toBe(false);
+      let err: unknown;
+      try {
+        buildTriggerLink({ ...p, from });
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(TriggerLinkError);
+      expect((err as TriggerLinkError).reason).toBe("bad-from");
+      expect((err as TriggerLinkError).message).toContain("VTI-LNK-102");
+    }
   });
 
   it("checks _exp", () => {
