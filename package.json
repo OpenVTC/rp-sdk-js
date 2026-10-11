@@ -1,6 +1,6 @@
 {
   "name": "@openvtc/rp-sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "SDK for Relying Parties: wallet sign-in with a trigger link (auth/oob/*), browser starter and server helpers; legacy SIOPv2 id_token verification",
   "license": "Apache-2.0",
   "repository": {
