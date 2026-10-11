@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.3.1 — 2026-10-11
+
+0.3.0 was never published to npm. 0.3.1 is the first published release with
+wallet sign-in with a trigger link; see 0.3.0 below for everything it adds.
 
 ### Fixed
 
