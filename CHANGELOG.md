@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Trigger links are built only for host-named DID contacts
+  (VTI-LNK-102).** `buildTriggerLink` (and so `createSignIn`'s
+  `serviceDid`) used to refuse only `did:key`; it now accepts a contact
+  only if its DID method names the host serving its document, can list
+  services, and is verified — `did:webvh` and `did:web` today. `did:peer`,
+  `did:key` and any unlisted method throw `TriggerLinkError` with reason
+  `bad-from`. The rule is the capability table
+  `CONTACT_METHOD_CAPABILITIES`, mirroring the plugin's reader, and is
+  exposed as `isHostNamedServiceContact`.
+
 ## 0.3.0 — 2026-10-11
 
 ### Added
