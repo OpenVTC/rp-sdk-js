@@ -96,6 +96,15 @@ export interface SignInOptions {
   allowInMemoryFallback?: boolean;
   /** Called on every state change. */
   onStateChange?: (state: SignInState) => void;
+  /**
+   * Skip "Continue as …?" for the identity this browser last confirmed: a
+   * redeem for that subject goes straight to `signedIn`, and
+   * {@link SignInController.confirm} remembers the subject it confirms. Any
+   * other subject is still asked, so someone signing this browser in as
+   * themselves (login CSRF) is still caught. Default: always ask.
+   * {@link localStorageKnownSubject} is the usual store.
+   */
+  knownSubject?: KnownSubjectStore;
   /** Called after sign-out has deleted `K_b`; end the site session here. */
   onSignOut?: () => void | Promise<void>;
   /** Timeout of an ordinary call, ms. Default 15 000. */
@@ -111,6 +120,37 @@ export interface SignInOptions {
   pageHost?: string;
   /** Registrable-domain function for the VTI-LNK-084 check. */
   registrableDomain?: (host: string) => string;
+}
+
+/** Where the identity this browser last confirmed is kept. */
+export interface KnownSubjectStore {
+  get(): string | null;
+  set(subject: string): void;
+}
+
+/**
+ * A {@link KnownSubjectStore} in `localStorage` under `key`. Storage that is
+ * missing, blocked or cleared reads as no subject, so the page asks again.
+ */
+export function localStorageKnownSubject(
+  key = "rp-sdk-known-subject",
+): KnownSubjectStore {
+  return {
+    get() {
+      try {
+        return globalThis.localStorage?.getItem(key) ?? null;
+      } catch {
+        return null;
+      }
+    },
+    set(subject) {
+      try {
+        globalThis.localStorage?.setItem(key, subject);
+      } catch {
+        // The next sign-in asks again.
+      }
+    },
+  };
 }
 
 /** A refusal from the service, or a transport failure. */
@@ -261,6 +301,7 @@ export class SignInController {
   /** "Continue as …?": the member confirmed. */
   confirm(): void {
     if (this.current.status !== "confirm") return;
+    this.opts.knownSubject?.set(this.current.subject);
     this.set({ ...this.current, status: "signedIn" });
   }
 
@@ -354,8 +395,9 @@ export class SignInController {
           body.ext && typeof body.ext === "object" && !Array.isArray(body.ext)
             ? body.ext
             : undefined;
+        const known = this.opts.knownSubject?.get();
         this.set({
-          status: "confirm",
+          status: known && known === body.subject ? "signedIn" : "confirm",
           subject: body.subject,
           displayName:
             typeof body.displayName === "string" && body.displayName

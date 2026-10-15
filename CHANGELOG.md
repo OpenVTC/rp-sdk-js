@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`knownSubject` on `createSignIn`: no "Continue as …?" for a known
+  identity.** With a `KnownSubjectStore` (`localStorageKnownSubject(key)` is
+  the usual one), `confirm()` remembers the subject it confirms, and a later
+  redeem for that same subject goes straight to `signedIn`. Any other subject
+  still stops at `confirm`, so someone signing the browser in as themselves
+  is still caught; `notMe()` leaves the remembered subject alone. Without the
+  option nothing changes.
+
 ## 0.3.1 — 2026-10-11
 
 0.3.0 was never published to npm. 0.3.1 is the first published release with

@@ -23,8 +23,13 @@ export {
   createSignIn,
   SignInController,
   SignInError,
+  localStorageKnownSubject,
 } from "./browser/starter.js";
-export type { SignInOptions, SignInState } from "./browser/starter.js";
+export type {
+  KnownSubjectStore,
+  SignInOptions,
+  SignInState,
+} from "./browser/starter.js";
 
 export {
   generateStarterKey,
