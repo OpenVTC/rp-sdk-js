@@ -34,7 +34,11 @@ https://link.trustoverip.org/t#_from=<service DID>&_id=<requestId>&_exp=<epoch s
 No UI framework. You draw the screens; the controller tells you which one.
 
 ```ts
-import { createSignIn, trustTaskEndpoint } from "@openvtc/rp-sdk/browser";
+import {
+  createSignIn,
+  localStorageKnownSubject,
+  trustTaskEndpoint,
+} from "@openvtc/rp-sdk/browser";
 
 const signIn = createSignIn({
   // The POST URL: the TrustTaskHTTPS serviceEndpoint (a base, e.g. …/v1)
@@ -54,6 +58,9 @@ const signIn = createSignIn({
     }
   },
   onSignOut: () => fetch("/logout", { method: "POST" }),
+  // Optional: skip "Continue as …?" for the identity this browser last
+  // confirmed (straight to "signedIn"). Any other identity is still asked.
+  knownSubject: localStorageKnownSubject("members-known-subject"),
 });
 
 showCodeButton.onclick = () => signIn.start();   // "Show sign-in code"

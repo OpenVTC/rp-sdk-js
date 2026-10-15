@@ -133,6 +133,33 @@ async function wallet(
   };
 }
 
+/** Scan, prove as `who` and approve: the wallet's whole part. */
+async function approveAs(
+  h: ReturnType<typeof harness>,
+  who: ReturnType<typeof setup>["alice"],
+) {
+  const waiting = (await waitFor(h.states, "waiting")) as Extract<
+    SignInState,
+    { status: "waiting" }
+  >;
+  const w = await wallet(h.env, waiting.link);
+  const step2 = await h.env.svc.prove(
+    await sign(OOB_TYPES.prove, w.ka, w.ka.signer, {
+      identify: await identifyDoc(who, w.id, w.ka.did, w.enter),
+    }),
+  );
+  const s2 = step2.payload as Step2Response;
+  const grant = await grantDoc(who, {
+    requestId: w.id,
+    sessionKey: s2.sessionKey,
+    approverKey: w.ka.did,
+    step2,
+  });
+  await h.env.svc.respond(
+    await sign(OOB_TYPES.respond, w.ka, w.ka.signer, { grant }),
+  );
+}
+
 describe("browser starter", () => {
   it("signs in end to end and deletes K_b on sign-out", async () => {
     const h = harness(
@@ -223,6 +250,45 @@ describe("browser starter", () => {
     await expect(
       crypto.subtle.exportKey("pkcs8", k.keyPair!.privateKey),
     ).rejects.toThrow();
+  });
+
+  it("lets the identity it last confirmed straight in, and asks for any other", async () => {
+    let stored: string | null = null;
+    const knownSubject = {
+      get: () => stored,
+      set: (s: string) => void (stored = s),
+    };
+
+    // First sign-in: asked; Continue remembers the subject.
+    const first = harness({ knownSubject });
+    await first.signIn.start();
+    await approveAs(first, first.env.alice);
+    await waitFor(first.states, "confirm");
+    first.signIn.confirm();
+    expect(stored).toBe(first.env.alice.did);
+    first.signIn.destroy();
+
+    // Same subject again: straight to signedIn, never asked.
+    const again = harness({ knownSubject });
+    await again.signIn.start();
+    await approveAs(again, again.env.alice);
+    const signedIn = (await waitFor(again.states, "signedIn")) as Extract<
+      SignInState,
+      { status: "signedIn" }
+    >;
+    expect(signedIn.subject).toBe(again.env.alice.did);
+    expect(again.states.some((s) => s.status === "confirm")).toBe(false);
+    again.signIn.destroy();
+
+    // Another subject: asked, and the remembered one is left alone.
+    const other = harness({ knownSubject });
+    stored = "did:example:someone-else";
+    await other.signIn.start();
+    await approveAs(other, other.env.alice);
+    await waitFor(other.states, "confirm");
+    await other.signIn.notMe();
+    expect(stored).toBe("did:example:someone-else");
+    other.signIn.destroy();
   });
 
   it("reports declined on a wrong number", async () => {
