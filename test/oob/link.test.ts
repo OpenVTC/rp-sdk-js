@@ -222,6 +222,38 @@ describe("buildTriggerLink", () => {
     }
   });
 
+  // spec/07a-links.md test vectors for did:scid: a did:scid:vh:1 DID URL with
+  // `?src=` is host-named through its src host (route A, VTI-LNK-119); a bare
+  // did:scid names no host and no route can qualify it.
+  it("accepts a did:scid:vh:1 contact only with its ?src= locator", () => {
+    const p = { requestId: ID, exp: EXP };
+    const scid = "did:scid:vh:1:QmXa7Rk2ZpLwT9vNc4HbYe1Jd8sMfU3qGo6PtVnEyKiBhW";
+    const located = `${scid}?src=dids.example.org/farm-auth`;
+    expect(isHostNamedServiceContact(located)).toBe(true);
+    const link = buildTriggerLink({ ...p, from: located });
+    // `=` is percent-encoded in the value; a reader decodes it once.
+    expect(link).toContain(`_from=${scid}?src%3Ddids.example.org/farm-auth&`);
+    const from = decodeURIComponent(
+      new URLSearchParams(new URL(link).hash.slice(1)).get("_from") ?? "",
+    );
+    expect(from).toBe(located);
+
+    for (const refused of [
+      scid,
+      `${scid}?src=`,
+      `${scid}?versionId=2`,
+      `${scid}?src=dids.example.org&versionId=2`,
+      `${scid}#key-1`,
+      "did:scid:vh:2:QmX?src=dids.example.org",
+      "did:scid:ke:1:QmX?src=dids.example.org",
+    ]) {
+      expect(isHostNamedServiceContact(refused)).toBe(false);
+      expect(reason(() => buildTriggerLink({ ...p, from: refused }))).toBe(
+        "bad-from",
+      );
+    }
+  });
+
   it("checks _exp", () => {
     const p = { from: FROM, requestId: ID };
     expect(reason(() => buildTriggerLink({ ...p, exp: -1 }))).toBe("bad-exp");

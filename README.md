@@ -45,6 +45,8 @@ const signIn = createSignIn({
   // plus "/trust-tasks". trustTaskEndpoint(didDocument) builds it.
   endpoint: "https://members.example.org/v1/trust-tasks",
   serviceDid: "did:webvh:…:members.example.org",
+  // A did:scid service passes its DID URL, with the `?src=` locator a wallet
+  // needs to resolve it: "did:scid:vh:1:…?src=members.example.org".
   container: document.getElementById("sign-in-code")!, // the QR goes here
   // linkHost: "link.trustoverip.org", // default; never your own domain
   onStateChange(state) {

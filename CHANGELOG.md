@@ -4,6 +4,14 @@
 
 ### Added
 
+- **did:scid services (VTI-KEY-160, VTI-LNK-119).** A `did:scid:vh:1` DID URL
+  with a `?src=` locator is a host-named contact, named by its src host, so
+  `buildTriggerLink` accepts it as `_from`. A bare did:scid, or one with any
+  other query, names no host and is refused with `bad-from`, as other
+  non-host-named DIDs are. `verifyOobClaim` and the other OOB verifiers match
+  `recipient` to `serviceDid` by DID, ignoring a did:scid `src`, so a holder
+  that addresses the bare DID is accepted. A did:scid and its did:webvh log are
+  still different services.
 - **`knownSubject` on `createSignIn`: no "Continue as …?" for a known
   identity.** With a `KnownSubjectStore` (`localStorageKnownSubject(key)` is
   the usual one), `confirm()` remembers the subject it confirms, and a later

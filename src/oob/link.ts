@@ -160,7 +160,8 @@ function assertValidFrom(from: string): void {
       "bad-from",
       `${didMethodOf(from)} is not an allowed contact (VTI-LNK-102): the ` +
         "contact must be a DID whose method names the host serving its " +
-        "document, can list services, and is verified (did:webvh, did:web)",
+        "document, can list services, and is verified (did:webvh, did:web, " +
+        "or a did:scid:vh:1 DID URL with ?src=)",
     );
   }
 }
@@ -190,7 +191,22 @@ export const CONTACT_METHOD_CAPABILITIES: Readonly<
   // ties a portal origin in the document to anyone the person recognises.
   "did:key": { namesHost: false, listsServices: false, verified: true },
   "did:peer": { namesHost: false, listsServices: true, verified: true },
+  // Names no host as a DID, but a did:scid:vh:1 DID URL names one in its
+  // `?src=` locator, and resolution through it is verified as did:webvh
+  // (VTI-LNK-119, VTI-KEY-161). So it qualifies only in that form; a bare
+  // did:scid has no host to show and is refused (VTI-LNK-119, VTI-KEY-163).
+  "did:scid": { namesHost: false, listsServices: true, verified: true },
 };
+
+/**
+ * Whether `did` is a `did:scid:vh:1` DID URL carrying a non-empty `?src=`
+ * locator, and no other query: the form in which a did:scid names the host
+ * serving its document.
+ */
+function isLocatedScid(did: string): boolean {
+  const match = /^did:scid:vh:1:[^?#:/]+\?src=([^&?#]+)$/.exec(did);
+  return match !== null;
+}
 
 /** `did:<method>` of a DID, lowercased as written (methods are lowercase). */
 function didMethodOf(did: string): string {
@@ -201,7 +217,8 @@ function didMethodOf(did: string): string {
 /**
  * The contact rule of VTI-LNK-102 / 112: a DID of a method whose identifier
  * names the host serving its document, whose document can list services, and
- * whose document readers verify. In practice `did:webvh` and `did:web`.
+ * whose document readers verify. In practice `did:webvh`, `did:web`, and a
+ * `did:scid:vh:1` DID URL with its `?src=` locator.
  */
 export function isHostNamedServiceContact(did: string): boolean {
   const method = didMethodOf(did);
@@ -212,9 +229,10 @@ export function isHostNamedServiceContact(did: string): boolean {
   )
     ? CONTACT_METHOD_CAPABILITIES[method]
     : undefined;
-  return (
-    caps !== undefined && caps.namesHost && caps.listsServices && caps.verified
-  );
+  const namesHost =
+    caps !== undefined &&
+    (caps.namesHost || (method === "did:scid" && isLocatedScid(did)));
+  return caps !== undefined && namesHost && caps.listsServices && caps.verified;
 }
 
 const B64URL =
