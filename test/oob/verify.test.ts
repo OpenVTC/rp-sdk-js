@@ -67,6 +67,42 @@ describe("verifyOobClaim", () => {
     );
   });
 
+  // A did:scid service is one identity whichever `?src=` locator it is named
+  // with (VTI-KEY-160): the link carries it, the holder need not repeat it.
+  it("matches a did:scid service by its DID", async () => {
+    const ka = didKey();
+    const bare = "did:scid:vh:1:QmService";
+    const located = `${bare}?src=members.example.org`;
+    for (const [serviceDid, recipient] of [
+      [located, bare],
+      [bare, located],
+      [located, `${bare}?src=moved.example.org`],
+    ]) {
+      const doc = await sign(
+        OOB_TYPES.claim,
+        ka,
+        ka.signer,
+        { requestId: RID },
+        { parentThreadId: RID, recipient },
+      );
+      expect(verifyOobClaim(doc, { serviceDid }).requestId).toBe(RID);
+    }
+    // Its did:webvh log is another identity (VTI-KEY-164).
+    const webvh = await sign(
+      OOB_TYPES.claim,
+      ka,
+      ka.signer,
+      { requestId: RID },
+      {
+        parentThreadId: RID,
+        recipient: "did:webvh:QmService:members.example.org",
+      },
+    );
+    expect(
+      await reasonOf(() => verifyOobClaim(webvh, { serviceDid: located })),
+    ).toBe("audience_mismatch");
+  });
+
   it("covers every envelope and proof failure", async () => {
     const ka = didKey();
     const good = await claimDoc(ka, RID);

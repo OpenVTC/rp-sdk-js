@@ -17,6 +17,7 @@ import { JcsLimitExceededError, jcsCanonicalize } from "../jcs.js";
 import { eddsaJcsHashInput } from "../proof.js";
 import { constantTimeEqual } from "../verify-id-token.js";
 import { didKeyVerificationMethod, ed25519KeyFromDidKey } from "./did-key.js";
+import { sameReference } from "./did-scid.js";
 import {
   resolveRelationshipKey,
   type DidDocumentResolver,
@@ -110,7 +111,12 @@ function checkEnvelope<P>(
   ) {
     fail("malformed", "missing payload");
   }
-  if (doc.recipient !== common.serviceDid) {
+  // By DID: a did:scid service may be named with the `?src=` locator its link
+  // carried, which a holder need not repeat (VTI-KEY-160).
+  if (
+    typeof doc.recipient !== "string" ||
+    !sameReference(doc.recipient, common.serviceDid)
+  ) {
     fail(
       "audience_mismatch",
       `recipient ${doc.recipient ?? "(absent)"} != ${common.serviceDid}`,
